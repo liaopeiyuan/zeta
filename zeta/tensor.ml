@@ -1,8 +1,13 @@
 module Tensor :
   sig
 
-  type 'a tensordata = ScalarVal of 'a | TensorVal of 'a tensordata array
-  type shape = Scalar | Cons of (int * shape)   
+  type 'a tensordata = 
+      | Scalar : 'a -> 'a tensordata
+      | Tensor : 'a tensordata array  -> 'a tensordata
+      | IntTensor : int tensordata array -> int tensordata
+      | FloatTensor : float tensordata array -> float tensordata
+
+  type shape = Nil | Cons of (int * shape)   
   type 'a tensor = shape ref * 'a tensordata * 'a tensordata * bool ref
   type index = S of int | All | R of (int * int)
   type indices = index array
