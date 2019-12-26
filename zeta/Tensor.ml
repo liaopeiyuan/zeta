@@ -27,17 +27,19 @@ module type Tensor =
   exception Impossible
   exception NullTensor
 
+  val new_bool : shape -> bool -> bool tensor
+  val new_int : shape -> int -> int tensor
+  val new_float : shape -> float -> float tensor
+
   val reduce : predicate -> (bool * bool -> bool) -> bool -> 'a tensordata -> bool 
   val any : predicate -> 'a tensor -> bool
   val all : predicate -> 'a tensor -> bool
   val apply : op -> 'a tensor -> unit
   
-  val new_bool : shape -> bool -> bool tensor
-  val new_int : shape -> int -> int tensor
-  val new_float : shape -> float -> float tensor
-
   val abs : 'a tensor -> unit
   val sigmoid : 'a tensor -> unit
+
+  val add : 'a tensor -> 'a tensor -> 'a tensor -> unit
 
   end 
 
@@ -75,21 +77,21 @@ module T : Tensor =
                       (v : bool) (t : int ref tensordata) : bool = 
     match t with
     | IntScalar e -> f (!e)
-    | IntTensor ts -> Array.fold_left (fun b p -> g (b ,(_reduce_int f g v p))) v ts
+    | IntTensor ts -> Array.fold_left (fun b p -> g (b,(_reduce_int f g v p))) v ts
     | _ -> raise Impossible
 
   let rec _reduce_float (f : float -> bool) (g : bool * bool -> bool) 
                       (v : bool) (t : float ref tensordata) : bool = 
     match t with
     | FloatScalar e -> f (!e)
-    | FloatTensor ts -> Array.fold_left (fun b p -> g (b ,(_reduce_float f g v p))) v ts
+    | FloatTensor ts -> Array.fold_left (fun b p -> g (b,(_reduce_float f g v p))) v ts
     | _ -> raise Impossible
 
   let rec _reduce_bool (f : bool -> bool) (g : bool * bool -> bool) 
                       (v : bool) (t : bool ref tensordata) : bool = 
     match t with
     | BoolScalar e -> f (!e)
-    | BoolTensor ts -> Array.fold_left (fun b p -> g (b ,(_reduce_bool f g v p))) v ts
+    | BoolTensor ts -> Array.fold_left (fun b p -> g (b,(_reduce_bool f g v p))) v ts
     | _ -> raise Impossible
 
   let reduce (type el) (f : predicate) (g : bool * bool -> bool) 
@@ -203,5 +205,6 @@ module T : Tensor =
   let new_float (s : shape) v = 
     let s' = Array.to_list s in
     (ref (s, _new_float s' v, None, false) : float tensor)
+
 
   end 
