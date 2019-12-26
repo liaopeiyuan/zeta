@@ -10,38 +10,27 @@ module type Tensor =
       | BoolTensor : bool ref tensordata array  -> bool ref tensordata
       | None
 
-  type shape = Nil | Cons of (int * shape)   
-  type 'a tensor = shape ref * 'a tensordata * 'a tensordata * bool ref
+  type shape = int array
+  type 'a tensor = (shape * 'a ref tensordata * 'a ref tensordata * bool) ref
   type index = S of int | All | R of (int * int)
   type indices = index array
-  type _ arith = 
-    | Int : (int -> int) -> 'a arith  
-    | Bool : (bool -> bool) -> 'a arith
-    | Float : (float -> float) -> 'a arith
+  type arith = 
+    | Int : (int -> int) -> arith  
+    | Bool : (bool -> bool) -> arith
+    | Float : (float -> float) -> arith
 
   exception TypeMismatch of string
   exception Impossible
   exception NullTensor
 
-  
-(* 
-  val new_t : arith -> int array -> 'a tensor
-  val new_bool : int array -> bool tensor
-  
-  val slice : 'a tensor -> indices -> 'a tensor
-  val toString : 'a tensor -> ('a -> string) -> string
-  val requires_grad : 'a tensor -> bool
-  val data : 'a tensor -> 'a tensordata
-  val grad : 'a tensor -> 'a tensordata
-  *)
-
   val abs : 'a tensor -> unit
-  val apply : 'a arith -> 'a tensor -> unit
+  val apply : arith -> 'a tensor -> unit
+  val new_bool : shape -> bool tensor
 
   end 
 
 
-module T  =
+module T : Tensor =
   struct
 
   type _ tensordata = 
@@ -53,14 +42,14 @@ module T  =
       | BoolTensor : bool ref tensordata array  -> bool ref tensordata
       | None
 
-  type shape = Nil | Cons of (int * shape)   
-  type 'a tensor = shape ref * 'a tensordata * 'a tensordata * bool ref
+  type shape = int array
+  type 'a tensor = (shape * 'a ref tensordata * 'a ref tensordata * bool) ref
   type index = S of int | All | R of (int * int)
   type indices = index array
-  type _ arith = 
-    | Int : (int -> int) -> 'a arith  
-    | Bool : (bool -> bool) -> 'a arith
-    | Float : (float -> float) -> 'a arith
+  type arith = 
+    | Int : (int -> int) -> arith  
+    | Bool : (bool -> bool) -> arith
+    | Float : (float -> float) -> arith
 
   exception TypeMismatch of string
   exception Impossible
@@ -84,7 +73,7 @@ module T  =
       | BoolTensor ts -> (ignore (Array.map (fun e -> _apply_bool f e) ts) ; ())
       | _ -> raise Impossible
 
-  let _apply (type el) (f : 'a arith) (t : el tensordata) : unit =
+  let _apply (type el) (f : arith) (t : el tensordata) : unit =
     match (f, t) with
     | (_, None) -> raise NullTensor
     | (Bool f', BoolScalar e) -> e := (f' (!e))
@@ -94,15 +83,19 @@ module T  =
     | (Float f', FloatScalar e) -> e := (f' (!e))
     | (Float f', FloatTensor e) -> _apply_float f' (FloatTensor e)
     | (Int _, FloatScalar _) -> raise (TypeMismatch "Attempted to apply int function on FloatScalar")
+    | (Int _, BoolScalar _) -> raise (TypeMismatch "Attempted to apply int function on BoolScalar")
     | (Bool _, FloatScalar _) -> raise (TypeMismatch "Attempted to apply bool function on FloatScalar")
+    | (Bool _, IntScalar _) -> raise (TypeMismatch "Attempted to apply bool function on IntScalar")
     | (Int _, FloatTensor _) -> raise (TypeMismatch "Attempted to apply int function on FloatTensor")
+    | (Int _, BoolTensor _) -> raise (TypeMismatch "Attempted to apply int function on BoolTensor")
     | (Bool _, FloatTensor _) -> raise (TypeMismatch "Attempted to apply bool function on FloatTensor")
+    | (Bool _, IntTensor _) -> raise (TypeMismatch "Attempted to apply bool function on IntTensor")
     | (Float _, IntScalar _) -> raise (TypeMismatch "Attempted to apply float function on IntScalar")
     | (Float _, IntTensor _) -> raise (TypeMismatch "Attempted to apply float function on IntTensor")
     | (Float _, BoolScalar _) -> raise (TypeMismatch "Attempted to apply float function on BoolScalar")
     | (Float _, BoolTensor _) -> raise (TypeMismatch "Attempted to apply float function on BoolTensor")
 
-  let apply f ((shape, data, grad, requires) : 'a tensor) = _apply f data  
+  let apply f (t : 'a tensor) = let (shape, data, grad, requires) = !t in _apply f data
   
   let _abs (type el) (t : el tensordata) : unit =
     let absf v = if v > 0.0 then v else v *. (-1.0) in
@@ -115,14 +108,17 @@ module T  =
     | IntTensor e -> _apply (Int absi) (IntTensor e)
     | FloatScalar e -> _apply (Float absf) (FloatScalar e)
     | FloatTensor e -> _apply (Float absf) (FloatTensor e)
+    | None -> raise NullTensor
   
-  let abs ((shape, data, grad, requires) : 'a tensor) = _abs data
+  let abs (t : 'a tensor) = let (shape, data, grad, requires) = !t in _abs data
   
-  (*
-  let _new_bool (s : shape) = match (t,s) with
-    | Nil -> BoolScalar (ref false)
-    | Cons (e, Nil) -> BoolTensor (Array.init e (fun i -> ref false))
-    | 
-    | _ -> raise Impossible
-  *)
+  let rec _new_bool (s : int list) = match s with
+    | [] -> BoolScalar (ref false)
+    | [e] -> BoolTensor (Array.init e (fun i -> BoolScalar (ref false)))
+    | e::s' -> BoolTensor (Array.init e (fun i -> _new_bool s'))
+
+  let new_bool (s : shape) = 
+    let s' = Array.to_list s in
+    (ref (s, _new_bool s', None, false) : bool tensor)
+
   end 
