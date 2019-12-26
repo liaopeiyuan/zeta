@@ -25,7 +25,9 @@ module type Tensor =
 
   val abs : 'a tensor -> unit
   val apply : arith -> 'a tensor -> unit
-  val new_bool : shape -> bool tensor
+  val new_bool : shape -> bool -> bool tensor
+  val new_int : shape -> int -> int tensor
+  val new_float : shape -> float -> float tensor
 
   end 
 
@@ -112,13 +114,31 @@ module T : Tensor =
   
   let abs (t : 'a tensor) = let (shape, data, grad, requires) = !t in _abs data
   
-  let rec _new_bool (s : int list) = match s with
-    | [] -> BoolScalar (ref false)
-    | [e] -> BoolTensor (Array.init e (fun i -> BoolScalar (ref false)))
-    | e::s' -> BoolTensor (Array.init e (fun i -> _new_bool s'))
+  let rec _new_bool (s : int list) v = match s with
+    | [] -> BoolScalar (ref v)
+    | [e] -> BoolTensor (Array.init e (fun i -> BoolScalar (ref v)))
+    | e::s' -> BoolTensor (Array.init e (fun i -> _new_bool s' v))
 
-  let new_bool (s : shape) = 
+  let new_bool (s : shape) v = 
     let s' = Array.to_list s in
-    (ref (s, _new_bool s', None, false) : bool tensor)
+    (ref (s, _new_bool s' v, None, false) : bool tensor)
+
+  let rec _new_int (s : int list) v = match s with
+    | [] -> IntScalar (ref v)
+    | [e] -> IntTensor (Array.init e (fun i -> IntScalar (ref v)))
+    | e::s' -> IntTensor (Array.init e (fun i -> _new_int s' v))
+
+  let new_int (s : shape) v = 
+    let s' = Array.to_list s in
+    (ref (s, _new_int s' v, None, false) : int tensor)
+
+  let rec _new_float (s : int list) v = match s with
+    | [] -> FloatScalar (ref v)
+    | [e] -> FloatTensor (Array.init e (fun i -> FloatScalar (ref v)))
+    | e::s' -> FloatTensor (Array.init e (fun i -> _new_float s' v))
+
+  let new_float (s : shape) v = 
+    let s' = Array.to_list s in
+    (ref (s, _new_float s' v, None, false) : float tensor)
 
   end 
