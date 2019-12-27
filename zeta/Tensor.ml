@@ -79,6 +79,7 @@ module T : Tensor =
   exception NullTensor
   exception ShapeMismatch of string
   exception IndexError of string
+  exception ZeroDimension
 
   let rec _reduce_int (f : int -> bool) (g : bool * bool -> bool) 
                       (v : bool) (t : int ref tensordata) : bool = 
@@ -186,6 +187,13 @@ module T : Tensor =
 
   let sigmoid (t : 'a tensor) = apply (FloatOp (fun x -> Float.exp(x) /. (Float.exp(x) +. 1.0))) t
   
+  let _check_valid_shape shape =
+    let len = Array.length shape in
+    if (Array.fold_left (fun x y -> x || y) false (Array.init len (fun i -> (Array.get shape i)<0)) ) then raise (IndexError "Negative size along one of the dimensions")
+    else if (Array.fold_left (fun x y -> x || y) false (Array.init len (fun i -> (Array.get shape i)=0)) )
+    then (Printf.printf "Warning : one of the dimensions is zero. \n"; raise ZeroDimension)
+    else ()
+
   let rec _new_bool (s : int list) v = match s with
     | [] -> BoolScalar (ref v)
     | [e] -> BoolTensor (Array.init e (fun i -> BoolScalar (ref v)))
@@ -193,7 +201,8 @@ module T : Tensor =
 
   let new_bool (s : shape) v = 
     let s' = Array.to_list s in
-    (ref (s, _new_bool s' v, None, false) : bool tensor)
+    try (_check_valid_shape s; (ref (s, _new_bool s' v, None, false) : bool tensor))
+    with ZeroDimension -> (ref (s, BoolTensor [||], None, false))
 
   let rec _new_int (s : int list) v = match s with
     | [] -> IntScalar (ref v)
@@ -202,7 +211,9 @@ module T : Tensor =
 
   let new_int (s : shape) v = 
     let s' = Array.to_list s in
-    (ref (s, _new_int s' v, None, false) : int tensor)
+    try (_check_valid_shape s; (ref (s, _new_int s' v, None, false) : int tensor))
+    with ZeroDimension -> (ref (s, IntTensor [||], None, false))
+
 
   let rec _new_float (s : int list) v = match s with
     | [] -> FloatScalar (ref v)
@@ -211,7 +222,8 @@ module T : Tensor =
 
   let new_float (s : shape) v = 
     let s' = Array.to_list s in
-    (ref (s, _new_float s' v, None, false) : float tensor)
+    try (_check_valid_shape s; (ref (s, _new_float s' v, None, false) : float tensor))
+    with ZeroDimension -> (ref (s, FloatTensor [||], None, false))
 
   let rec _getset_float (t : 'a tensordata) idx f = 
     match (t, idx) with
