@@ -43,14 +43,14 @@ module type Tensor =
   val abs : 'a tensor -> unit
   val sigmoid : 'a tensor -> unit
 
-  (* val broadcast : 'a tensor -> shape -> unit *)
+  (* val broadcast : 'a tensor -> shape -> bool -> unit *)
 
   (* val add : 'a tensor -> 'a tensor -> 'a tensor -> unit *)
 
   end 
 
 
-module T : Tensor =
+module T  =
   struct
 
   type _ tensordata = 
@@ -268,5 +268,34 @@ module T : Tensor =
 
   let get (t : 'a tensor) idx = let (shape, data, grad, requires) = !t in
     (_check_valid_idx (data, shape, idx) ; _getset data (Array.to_list idx) (fun x -> !x))
+  
+  (* The lists are reversed for recursion *)
+  let _check_broadcastable s d =
+    let (source, destination) = ((List.rev (Array.to_list s)), (List.rev (Array.to_list d))) in
+    let rec _check_broadcastable' source destination = 
+      match (source, destination) with
+        | ([], d) -> (destination, [])
+        | (_ :: _,[]) -> raise (ShapeMismatch "source array has more dimensions than desired shape")
+        | (s :: s', d :: d') -> 
+          if s != d && s != 1 then raise (ShapeMismatch "one of the trailing dimensions don't agree")
+          else let (lead, trail) = _check_broadcastable' s' d' in (lead, d::trail) in
+    let (s', d') = _check_broadcastable' source destination in
+      (List.rev s', List.rev d')
 
+  (* let _broadcast_int t source lead trail copy = *)
+  let rec _map_int (t : int ref tensordata) source target copy = 
+    match (t, source, target) with
+    | (IntScalar r, [], []) -> if copy then IntScalar (ref (!r)) else IntScalar r
+    | (IntTensor r, e::e', d::d') -> 
+        if e = d then 
+          IntTensor (Array.map (fun i -> _map_int i e' d' copy) r)
+        else
+          IntTensor (Array.init d (fun i -> _map_int (IntTensor r) e' d' copy))
+    | (IntTensor r, [], []) -> raise TensorInvariantViolated
+
+  
+  (*  let broadcast t s copy = let (source, data, grad, requires) = !t in
+    let (lead_dim, trail_dim) = _check_broadcastable ) in
+    _broadcast t source lead trail copy
+  *)
   end 
