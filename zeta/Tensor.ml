@@ -37,6 +37,7 @@ module type Tensor =
   val all : predicate -> 'a tensor -> bool
   val apply : op -> 'a tensor -> unit
   
+  val get : 'a tensor -> index -> 'a
   val set : 'a tensor -> index -> 'a -> unit
 
   val abs : 'a tensor -> unit
@@ -212,35 +213,35 @@ module T : Tensor =
     let s' = Array.to_list s in
     (ref (s, _new_float s' v, None, false) : float tensor)
 
-  let rec _set_float (t : 'a tensordata) idx el = 
+  let rec _getset_float (t : 'a tensordata) idx f = 
     match (t, idx) with
-    | (FloatScalar r, []) -> r := el
-    | (FloatTensor r, e::s') -> _set_float (Array.get r e) s' el
+    | (FloatScalar r, []) -> f r
+    | (FloatTensor r, e::s') -> _getset_float (Array.get r e) s' f
     | _ -> raise TensorInvariantViolated
 
-  let rec _set_int (t : 'a tensordata) idx el = 
+  let rec _getset_int (t : 'a tensordata) idx f = 
     match (t, idx) with
-    | (IntScalar r, []) -> r := el
-    | (IntTensor r, e::s') -> _set_int (Array.get r e) s' el
+    | (IntScalar r, []) -> f r
+    | (IntTensor r, e::s') -> _getset_int (Array.get r e) s' f
     | _ -> raise TensorInvariantViolated
 
-  let rec _set_bool (t : 'a tensordata) idx el = 
+  let rec _getset_bool (t : 'a tensordata) idx f = 
     match (t, idx) with
-    | (BoolScalar r, []) -> r := el
-    | (BoolTensor r, e::s') -> _set_bool (Array.get r e) s' el
+    | (BoolScalar r, []) -> f r
+    | (BoolTensor r, e::s') -> _getset_bool (Array.get r e) s' f
     | _ -> raise TensorInvariantViolated
 
-  let _set (type l) (t : l ref tensordata) idx (el : l) = 
+  let _getset (type l) (t : l ref tensordata) idx (f : l ref -> 'a) = 
     match (t, idx) with
-    | (FloatScalar r, []) -> r := el
-    | (FloatTensor r, e::s') -> _set_float (FloatTensor r) (e::s') el
-    | (IntScalar r, []) -> r := el
-    | (IntTensor r, e::s') -> _set_int (IntTensor r) (e::s') el
-    | (BoolScalar r, []) -> r := el
-    | (BoolTensor r, e::s') -> _set_bool (BoolTensor r) (e::s') el
+    | (FloatScalar r, []) -> f r
+    | (FloatTensor r, e::s') -> _getset_float (FloatTensor r) (e::s') f
+    | (IntScalar r, []) -> f r
+    | (IntTensor r, e::s') -> _getset_int (IntTensor r) (e::s') f
+    | (BoolScalar r, []) -> f r
+    | (BoolTensor r, e::s') -> _getset_bool (BoolTensor r) (e::s') f
     | _ -> raise TensorInvariantViolated
     
-  let set (t : 'a tensor) idx e = let (shape, data, grad, requires) = !t in
+  let _check_valid_idx (data, shape, idx) =
     match data with | None -> raise NullTensor | _ -> 
     let len1 = Array.length shape in
     let len2 = Array.length idx in
@@ -248,6 +249,12 @@ module T : Tensor =
     else if idx < Array.init len1 (fun x -> 0) then raise (IndexError "Negative indexing not supported")
     else if not (Array.fold_left (fun x y -> x && y) true (Array.init len1 (fun i -> (Array.get idx i) < (Array.get shape i))) )
     then raise (IndexError "Array index out of bound")
-    else _set data (Array.to_list idx) e
+    else ()
+
+  let set (t : 'a tensor) idx e = let (shape, data, grad, requires) = !t in
+    (_check_valid_idx (data, shape, idx) ; _getset data (Array.to_list idx) (fun x -> x := e))
+
+  let get (t : 'a tensor) idx = let (shape, data, grad, requires) = !t in
+    (_check_valid_idx (data, shape, idx) ; _getset data (Array.to_list idx) (fun x -> !x))
 
   end 
