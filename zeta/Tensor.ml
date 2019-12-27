@@ -12,8 +12,8 @@ module type Tensor =
 
   type shape = int array
   type 'a tensor = (shape * 'a ref tensordata * 'a ref tensordata * bool) ref
-  type index = S of int | All | R of (int * int)
-  type indices = index array
+  type index = int array
+
   type op = 
     | IntOp : (int -> int) -> op  
     | BoolOp : (bool -> bool) -> op
@@ -24,8 +24,9 @@ module type Tensor =
     | FloatP : (float -> bool) -> predicate
 
   exception TypeMismatch of string
-  exception Impossible
+  exception TensorInvariantViolated
   exception NullTensor
+  exception ShapeMismatch of string
 
   val new_bool : shape -> bool -> bool tensor
   val new_int : shape -> int -> int tensor
@@ -36,10 +37,14 @@ module type Tensor =
   val all : predicate -> 'a tensor -> bool
   val apply : op -> 'a tensor -> unit
   
+  val set : 'a tensor -> index -> 'a -> unit
+
   val abs : 'a tensor -> unit
   val sigmoid : 'a tensor -> unit
 
-  val add : 'a tensor -> 'a tensor -> 'a tensor -> unit
+  (* val broadcast : 'a tensor -> shape -> unit *)
+
+  (* val add : 'a tensor -> 'a tensor -> 'a tensor -> unit *)
 
   end 
 
@@ -58,8 +63,7 @@ module T : Tensor =
 
   type shape = int array
   type 'a tensor = (shape * 'a ref tensordata * 'a ref tensordata * bool) ref
-  type index = S of int | All | R of (int * int)
-  type indices = index array
+  type index = int array
   type op = 
     | IntOp : (int -> int) -> op  
     | BoolOp : (bool -> bool) -> op
@@ -70,29 +74,31 @@ module T : Tensor =
     | FloatP : (float -> bool) -> predicate
   
   exception TypeMismatch of string
-  exception Impossible
+  exception TensorInvariantViolated
   exception NullTensor
+  exception ShapeMismatch of string
+  exception IndexError of string
 
   let rec _reduce_int (f : int -> bool) (g : bool * bool -> bool) 
                       (v : bool) (t : int ref tensordata) : bool = 
     match t with
     | IntScalar e -> f (!e)
     | IntTensor ts -> Array.fold_left (fun b p -> g (b,(_reduce_int f g v p))) v ts
-    | _ -> raise Impossible
+    | _ -> raise TensorInvariantViolated
 
   let rec _reduce_float (f : float -> bool) (g : bool * bool -> bool) 
                       (v : bool) (t : float ref tensordata) : bool = 
     match t with
     | FloatScalar e -> f (!e)
     | FloatTensor ts -> Array.fold_left (fun b p -> g (b,(_reduce_float f g v p))) v ts
-    | _ -> raise Impossible
+    | _ -> raise TensorInvariantViolated
 
   let rec _reduce_bool (f : bool -> bool) (g : bool * bool -> bool) 
                       (v : bool) (t : bool ref tensordata) : bool = 
     match t with
     | BoolScalar e -> f (!e)
     | BoolTensor ts -> Array.fold_left (fun b p -> g (b,(_reduce_bool f g v p))) v ts
-    | _ -> raise Impossible
+    | _ -> raise TensorInvariantViolated
 
   let reduce (type el) (f : predicate) (g : bool * bool -> bool) 
                         (v : bool) (t : el tensordata) : bool =
@@ -124,19 +130,19 @@ module T : Tensor =
     match t with
     | IntScalar e -> e := (f (!e))
     | IntTensor ts -> (ignore (Array.map (fun e -> _apply_int f e) ts) ; ())
-    | _ -> raise Impossible
+    | _ -> raise TensorInvariantViolated
 
   let rec _apply_float f (t : float ref tensordata) : unit = 
     match t with
     | FloatScalar e -> e := (f (!e))
     | FloatTensor ts -> (ignore (Array.map (fun e -> _apply_float f e) ts) ; ())
-    | _ -> raise Impossible
+    | _ -> raise TensorInvariantViolated
 
   let rec _apply_bool f (t : bool ref tensordata) : unit = 
     match t with
     | BoolScalar e -> e := (f (!e))
     | BoolTensor ts -> (ignore (Array.map (fun e -> _apply_bool f e) ts) ; ())
-    | _ -> raise Impossible
+    | _ -> raise TensorInvariantViolated
 
   let _apply (type el) (f : op) (t : el tensordata) : unit =
     match (f, t) with
@@ -206,5 +212,42 @@ module T : Tensor =
     let s' = Array.to_list s in
     (ref (s, _new_float s' v, None, false) : float tensor)
 
+  let rec _set_float (t : 'a tensordata) idx el = 
+    match (t, idx) with
+    | (FloatScalar r, []) -> r := el
+    | (FloatTensor r, e::s') -> _set_float (Array.get r e) s' el
+    | _ -> raise TensorInvariantViolated
+
+  let rec _set_int (t : 'a tensordata) idx el = 
+    match (t, idx) with
+    | (IntScalar r, []) -> r := el
+    | (IntTensor r, e::s') -> _set_int (Array.get r e) s' el
+    | _ -> raise TensorInvariantViolated
+
+  let rec _set_bool (t : 'a tensordata) idx el = 
+    match (t, idx) with
+    | (BoolScalar r, []) -> r := el
+    | (BoolTensor r, e::s') -> _set_bool (Array.get r e) s' el
+    | _ -> raise TensorInvariantViolated
+
+  let _set (type l) (t : l ref tensordata) idx (el : l) = 
+    match (t, idx) with
+    | (FloatScalar r, []) -> r := el
+    | (FloatTensor r, e::s') -> _set_float (FloatTensor r) (e::s') el
+    | (IntScalar r, []) -> r := el
+    | (IntTensor r, e::s') -> _set_int (IntTensor r) (e::s') el
+    | (BoolScalar r, []) -> r := el
+    | (BoolTensor r, e::s') -> _set_bool (BoolTensor r) (e::s') el
+    | _ -> raise TensorInvariantViolated
+    
+  let set (t : 'a tensor) idx e = let (shape, data, grad, requires) = !t in
+    match data with | None -> raise NullTensor | _ -> 
+    let len1 = Array.length shape in
+    let len2 = Array.length idx in
+    if (len1) != (len2) then raise (IndexError (("Expected index of length"^(string_of_int len1))^("; Got "^(string_of_int len2)) ) )
+    else if idx < Array.init len1 (fun x -> 0) then raise (IndexError "Negative indexing not supported")
+    else if not (Array.fold_left (fun x y -> x && y) true (Array.init len1 (fun i -> (Array.get idx i) < (Array.get shape i))) )
+    then raise (IndexError "Array index out of bound")
+    else _set data (Array.to_list idx) e
 
   end 
