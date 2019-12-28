@@ -229,7 +229,7 @@ module T  =
     with ZeroDimension -> (ref (s, FloatTensor [||], None, false))
 
 
-  let rec _tile (type el) (s : int list) (v : el ref tensordata) : el ref tensordata = 
+  let rec _new (type el) (s : int list) (v : el ref tensordata) : el ref tensordata = 
     match (s,v) with
     | ([], IntScalar t) -> IntScalar t
     | (e::s', IntScalar t) -> _new_int (e::s') (IntScalar t)
@@ -244,16 +244,16 @@ module T  =
     | ([], BoolTensor t) -> BoolTensor t
     | (e::s', BoolTensor t) -> _new_bool (e::s') (BoolTensor t)
 
-  let tile (type el) (s : shape) (t : el tensor) = 
-    let s' = List.rev (Array.to_list s) in
+  let new (type el) (s : shape) (t : el tensor) = 
+    let s' = (Array.to_list s) in
     let (shape, data, grad, requires) = !t in
-    try (_check_valid_shape s; (ref (s, _new_int s' data, None, false) : int tensor))
+    try (_check_valid_shape s; (ref (s, _tile s' data, None, false)))
     with ZeroDimension -> match data with
       | IntScalar _ -> (ref (s, IntTensor [||], None, false))
       | IntTensor _ -> (ref (s, IntTensor [||], None, false))
-      | FloatScalar_ -> (ref (s, FloatTensor [||], None, false))
+      | FloatScalar _ -> (ref (s, FloatTensor [||], None, false))
       | FloatTensor _ -> (ref (s, FloatTensor [||], None, false))
-      | BoolScalar_ -> (ref (s, BoolTensor [||], None, false))
+      | BoolScalar _ -> (ref (s, BoolTensor [||], None, false))
       | BoolTensor _ -> (ref (s, BoolTensor [||], None, false))
 
   let rec _getset_float (t : 'a tensordata) idx f = 
