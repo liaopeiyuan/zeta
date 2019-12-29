@@ -228,8 +228,8 @@ module T  =
     (shape, _copy(data), _copy(grad), requires)
 
   let rec _new_bool (s : int list) v b = match s with
-    | [] -> v
-    | [e] -> BoolTensor (Array.init e (fun i -> v))
+    | [] -> _copy v b
+    | [e] -> BoolTensor (Array.init e (fun i -> _copy v b))
     | e::s' -> BoolTensor (Array.init e (fun i -> _new_bool s' v b))
 
   let new_bool (s : shape) v = 
@@ -239,8 +239,8 @@ module T  =
     with ZeroDimension -> (ref (s, BoolTensor [||], None, false))
 
   let rec _new_int (s : int list) v b = match s with
-    | [] -> v
-    | [e] -> IntTensor (Array.init e (fun i -> v))
+    | [] -> _copy v b
+    | [e] -> IntTensor (Array.init e (fun i -> _copy v b))
     | e::s' -> IntTensor (Array.init e (fun i -> _new_int s' v b))
 
   let new_int (s : shape) v = 
@@ -251,8 +251,8 @@ module T  =
 
 
   let rec _new_float (s : int list) v b = match s with
-    | [] -> v
-    | [e] -> FloatTensor (Array.init e (fun i -> v))
+    | [] -> _copy v b
+    | [e] -> FloatTensor (Array.init e (fun i -> _copy v b))
     | e::s' -> FloatTensor (Array.init e (fun i -> _new_float s' v b))
 
   let new_float (s : shape) v = 
@@ -277,12 +277,14 @@ module T  =
     | (e::s', BoolScalar t) -> _new_bool (e::s') (BoolScalar t) b
     | ([], BoolTensor t) -> _copy (BoolTensor t) b
     | (e::s', BoolTensor t) -> _new_bool (e::s') (BoolTensor t) b
+    | (_, None) -> raise NullTensor
 
   let new_t (type el) (s : shape) (t : el tensor) b = 
     let s' = (Array.to_list s) in
     let (shape, data, grad, requires) = !t in
     let news = Array.of_list( List.append s' (Array.to_list shape) ) in
-    try (_check_valid_shape s; (ref (news, _new_t s' data b,  _new_t s' grad b, requires)))
+    let newgrad = try (_new_t s' grad b) with NullTensor -> None in 
+    try (_check_valid_shape s; (ref (news, _new_t s' data b, newgrad , requires)))
     with ZeroDimension -> match data with
       | IntScalar _ -> (ref (s, IntTensor [||], IntTensor [||], requires))
       | IntTensor _ -> (ref (s, IntTensor [||], IntTensor [||], requires))
