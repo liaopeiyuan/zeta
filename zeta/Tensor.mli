@@ -1,19 +1,18 @@
 module type Tensor =
   sig
 
-  type _ tensordata = 
-    | IntScalar : int ref -> int ref tensordata
-    | FloatScalar : float ref -> float ref tensordata
-    | BoolScalar : bool ref -> bool ref tensordata
-    | IntTensor : int ref tensordata array -> int ref tensordata
-    | FloatTensor : float ref tensordata array -> float ref tensordata
-    | BoolTensor : bool ref tensordata array  -> bool ref tensordata
-    | Null
-
+    type _ tensordata = 
+      | IntScalar : int ref -> int ref tensordata
+      | FloatScalar : float ref -> float ref tensordata
+      | BoolScalar : bool ref -> bool ref tensordata
+      | IntTensor : int ref tensordata array -> int ref tensordata
+      | FloatTensor : float ref tensordata array -> float ref tensordata
+      | BoolTensor : bool ref tensordata array  -> bool ref tensordata
+      | Null
+  type 'a grad_fn = Empty | Fn of 'a ref tensordata ref list
   type shape = int array
-  type 'a tensor = (shape * 'a ref tensordata * 'a ref tensordata * bool) ref
+  type 'a tensor = (shape * 'a ref tensordata * 'a ref tensordata * 'a grad_fn) ref
   type index = int array
-
   type op = 
     | IntOp : (int -> int) -> op  
     | BoolOp : (bool -> bool) -> op
@@ -22,11 +21,14 @@ module type Tensor =
     | IntP : (int -> bool) -> predicate  
     | BoolP : (bool -> bool) -> predicate
     | FloatP : (float -> bool) -> predicate
-
+  
   exception TypeMismatch of string
   exception TensorInvariantViolated
   exception NullTensor
   exception ShapeMismatch of string
+  exception IndexError of string
+  exception ZeroDimension
+
 
   val new_bool : shape -> bool -> bool tensor
   val new_int : shape -> int -> int tensor
