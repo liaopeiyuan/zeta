@@ -1,27 +1,32 @@
 module Tensor =
   struct
 
-  type _ tensordata = 
-      | IntScalar : int ref -> int ref tensordata
-      | FloatScalar : float ref -> float ref tensordata
-      | BoolScalar : bool ref -> bool ref tensordata
-      | IntTensor : int ref tensordata array -> int ref tensordata
-      | FloatTensor : float ref tensordata array -> float ref tensordata
-      | BoolTensor : bool ref tensordata array  -> bool ref tensordata
-      | Null
-      
-  type 'a grad_fn = Empty | Fn of 'a ref tensordata ref list
-  type shape = int array
-  type 'a tensor = (shape * 'a ref tensordata * 'a ref tensordata * 'a grad_fn) ref
-  type index = int array
   type op = 
     | IntOp : (int -> int) -> op  
     | BoolOp : (bool -> bool) -> op
     | FloatOp : (float -> float) -> op
+
   type predicate = 
     | IntP : (int -> bool) -> predicate  
     | BoolP : (bool -> bool) -> predicate
     | FloatP : (float -> bool) -> predicate
+
+  type 'a tensordata = 
+      | IntScalar : int ref -> int tensordata
+      | FloatScalar : float ref -> float tensordata
+      | BoolScalar : bool ref -> bool tensordata
+      | IntTensor : int tensordata array -> int tensordata
+      | FloatTensor : float tensordata array -> float tensordata
+      | BoolTensor : bool tensordata array  -> bool tensordata
+      | Null
+      
+  type shape = int array
+  type index = int array
+
+  type 'a grad_fn = 
+    | Empty : 'a grad_fn 
+    | Fn : ('a tensor * op) array -> 'a grad_fn
+  and 'a tensor = (shape * 'a tensordata * 'a tensordata * 'a grad_fn) ref  
   
   exception TypeMismatch of string
   exception TensorInvariantViolated
@@ -31,21 +36,21 @@ module Tensor =
   exception ZeroDimension
 
   let rec _reduce_int (f : int -> bool) (g : bool * bool -> bool) 
-                      (v : bool) (t : int ref tensordata) : bool = 
+                      (v : bool) (t : int tensordata) : bool = 
     match t with
     | IntScalar e -> f (!e)
     | IntTensor ts -> Array.fold_left (fun b p -> g (b,(_reduce_int f g v p))) v ts
     | _ -> raise TensorInvariantViolated
 
   let rec _reduce_float (f : float -> bool) (g : bool * bool -> bool) 
-                      (v : bool) (t : float ref tensordata) : bool = 
+                      (v : bool) (t : float tensordata) : bool = 
     match t with
     | FloatScalar e -> f (!e)
     | FloatTensor ts -> Array.fold_left (fun b p -> g (b,(_reduce_float f g v p))) v ts
     | _ -> raise TensorInvariantViolated
 
   let rec _reduce_bool (f : bool -> bool) (g : bool * bool -> bool) 
-                      (v : bool) (t : bool ref tensordata) : bool = 
+                      (v : bool) (t : bool tensordata) : bool = 
     match t with
     | BoolScalar e -> f (!e)
     | BoolTensor ts -> Array.fold_left (fun b p -> g (b,(_reduce_bool f g v p))) v ts
@@ -77,19 +82,19 @@ module Tensor =
   let all f (t : 'a tensor) = let (shape, data, grad, grad_fn) = !t in reduce f (fun (x,y) -> x && y) true data
   let any f (t : 'a tensor) = let (shape, data, grad, grad_fn) = !t in reduce f (fun (x,y) -> x || y) false data
 
-  let rec _apply_int f (t : int ref tensordata) : unit = 
+  let rec _apply_int f (t : int tensordata) : unit = 
     match t with
     | IntScalar e -> e := (f (!e))
     | IntTensor ts -> (ignore (Array.map (fun e -> _apply_int f e) ts) ; ())
     | _ -> raise TensorInvariantViolated
 
-  let rec _apply_float f (t : float ref tensordata) : unit = 
+  let rec _apply_float f (t : float tensordata) : unit = 
     match t with
     | FloatScalar e -> e := (f (!e))
     | FloatTensor ts -> (ignore (Array.map (fun e -> _apply_float f e) ts) ; ())
     | _ -> raise TensorInvariantViolated
 
-  let rec _apply_bool f (t : bool ref tensordata) : unit = 
+  let rec _apply_bool f (t : bool tensordata) : unit = 
     match t with
     | BoolScalar e -> e := (f (!e))
     | BoolTensor ts -> (ignore (Array.map (fun e -> _apply_bool f e) ts) ; ())
@@ -144,20 +149,20 @@ module Tensor =
     else ()
 
     
-  let _copy (type el) (e : el ref tensordata) (b : bool) : el ref tensordata = 
-    let rec _copy_bool (t : bool ref tensordata)=
+  let _copy (type el) (e : el tensordata) (b : bool) : el tensordata = 
+    let rec _copy_bool (t : bool tensordata)=
       match t with
       | BoolScalar r ->  BoolScalar (ref (!r))
       | BoolTensor r -> BoolTensor (Array.map (fun i -> _copy_bool i) r)
       | _ -> raise TensorInvariantViolated 
     in
-    let rec _copy_int (t : int ref tensordata) =
+    let rec _copy_int (t : int tensordata) =
       match t with
       | IntScalar r -> IntScalar (ref (!r))
       | IntTensor r -> IntTensor (Array.map (fun i -> _copy_int i) r)
       | _ -> raise TensorInvariantViolated 
     in
-    let rec _copy_float (t : float ref tensordata)=
+    let rec _copy_float (t : float tensordata)=
       match t with
       | FloatScalar r -> FloatScalar (ref (!r))
       | FloatTensor r -> FloatTensor (Array.map (fun i -> _copy_float i) r)
@@ -211,7 +216,7 @@ module Tensor =
     with ZeroDimension -> (ref (s, FloatTensor [||], Null, Empty))
 
 
-  let rec _new_t (type el) (s : int list) (v : el ref tensordata) b : el ref tensordata = 
+  let rec _new_t (type el) (s : int list) (v : el tensordata) b : el tensordata = 
     let f t b = if b then ref (!t) else t in
     match (s,v) with
     | ([], IntScalar t) -> IntScalar (f t b)
@@ -264,7 +269,7 @@ module Tensor =
     | (BoolTensor r, e::s') -> _getset_bool (Array.get r e) s' f
     | _ -> raise TensorInvariantViolated
 
-  let _getset (type l) (t : l ref tensordata) idx (f : l ref -> 'a) = 
+  let _getset (type el) (t : el tensordata) idx (f : el ref -> 'a) = 
     match (t, idx) with
     | (FloatScalar r, []) -> f r
     | (FloatTensor r, e::s') -> _getset_float (FloatTensor r) (e::s') f
@@ -339,9 +344,9 @@ module Tensor =
     | _ -> raise TensorInvariantViolated
 
   
-  let _broadcast (type el) (t : el ref tensordata) 
+  let _broadcast (type el) (t : el tensordata) 
                  (source : int list) (lead : int list)
-                 (trail : int list) (copy : bool) : el ref tensordata =  
+                 (trail : int list) (copy : bool) : el tensordata =  
     let f t b = if b then ref (!t) else t in
     match t with
     | FloatTensor r -> _new_float lead (_map_float (FloatTensor r) source trail copy) copy
@@ -358,7 +363,7 @@ module Tensor =
     let news = Array.of_list (lead_dim @ trail_dim) in
     if copy then ref (news, newdata, grad, grad_fn) else (t := (news, newdata, grad, grad_fn); t)
 
-  let _elem_mul (type el) (t1 : el ref tensordata) (t2 : el ref tensordata) = 
+  let _elem_mul (type el) (t1 : el tensordata) (t2 : el tensordata) = 
     let rec _elem_mul_float t1 t2 =
       match (t1, t2) with
       | (FloatScalar s, FloatScalar s') -> s := (!s *. !s')
