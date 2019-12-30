@@ -225,7 +225,7 @@ module T  =
      else e
     
   let copy t = let (shape, data, grad, requires) = !t in
-    (shape, _copy(data), _copy(grad), requires)
+    ref (shape, _copy(data), _copy(grad), requires)
 
   let rec _new_bool (s : int list) v b = match s with
     | [] -> _copy v b
@@ -284,14 +284,18 @@ module T  =
     let (shape, data, grad, requires) = !t in
     let news = Array.of_list( List.append s' (Array.to_list shape) ) in
     let newgrad = try (_new_t s' grad b) with NullTensor -> None in 
-    try (_check_valid_shape s; (ref (news, _new_t s' data b, newgrad , requires)))
+    let newt = 
+    try (_check_valid_shape s; (news, _new_t s' data b, newgrad , requires))
     with ZeroDimension -> match data with
-      | IntScalar _ -> (ref (s, IntTensor [||], IntTensor [||], requires))
-      | IntTensor _ -> (ref (s, IntTensor [||], IntTensor [||], requires))
-      | FloatScalar _ -> (ref (s, FloatTensor [||], FloatTensor [||], requires))
-      | FloatTensor _ -> (ref (s, FloatTensor [||], FloatTensor [||], requires))
-      | BoolScalar _ -> (ref (s, BoolTensor [||], BoolTensor [||], requires))
-      | BoolTensor _ -> (ref (s, BoolTensor [||], BoolTensor [||], requires))
+      | IntScalar _ ->  (s, IntTensor [||], IntTensor [||], requires)
+      | IntTensor _ ->  (s, IntTensor [||], IntTensor [||], requires)
+      | FloatScalar _ ->  (s, FloatTensor [||], FloatTensor [||], requires)
+      | FloatTensor _ ->  (s, FloatTensor [||], FloatTensor [||], requires)
+      | BoolScalar _ ->  (s, BoolTensor [||], BoolTensor [||], requires)
+      | BoolTensor _ ->  (s, BoolTensor [||], BoolTensor [||], requires)
+      | None -> ( (s, None, None, requires))
+    in
+    if b then ref newt else (t := newt; t)
 
   let rec _getset_float (t : 'a tensordata) idx f = 
     match (t, idx) with
@@ -325,7 +329,7 @@ module T  =
     match data with | None -> raise NullTensor | _ -> 
     let len1 = Array.length shape in
     let len2 = Array.length idx in
-    if (len1) != (len2) then raise (IndexError (("Expected index of length"^(string_of_int len1))^("; Got "^(string_of_int len2)) ) )
+    if (len1) != (len2) then raise (IndexError (("Expected index of length "^(string_of_int len1))^("; Got "^(string_of_int len2)) ) )
     else if idx < Array.init len1 (fun x -> 0) then raise (IndexError "Negative indexing not supported")
     else if not (Array.fold_left (fun x y -> x && y) true (Array.init len1 (fun i -> (Array.get idx i) < (Array.get shape i))) )
     then raise (IndexError "Array index out of bound")
@@ -336,8 +340,10 @@ module T  =
 
   let get (t : 'a tensor) idx = let (shape, data, grad, requires) = !t in
     (_check_valid_idx (data, shape, idx) ; _getset data (Array.to_list idx) (fun x -> !x))
+
+  (* dangerous *)
+  let _set t idx e = _getset t (Array.to_list idx) (fun x -> x := e)
   
-  (* The lists are reversed for recursion *)
   let _check_broadcastable s d =
     let (source, destination) = ((List.rev (Array.to_list s)), (List.rev (Array.to_list d))) in
     let rec _check_broadcastable' source destination = 
@@ -350,19 +356,65 @@ module T  =
     let (s', d') = _check_broadcastable' source destination in
       (List.rev s', List.rev d')
 
-  (* let _broadcast_int t source lead trail copy = *)
-  let rec _map_int (t : int ref tensordata) source target copy = 
+  let rec _map_int t source target copy = 
     match (t, source, target) with
     | (IntScalar r, [], []) -> if copy then IntScalar (ref (!r)) else IntScalar r
     | (IntTensor r, e::e', d::d') -> 
         if e = d then 
           IntTensor (Array.map (fun i -> _map_int i e' d' copy) r)
         else
-          IntTensor (Array.init d (fun i -> _map_int (IntTensor r) e' d' copy))
-    | (IntTensor r, [], []) -> raise TensorInvariantViolated
+          IntTensor (Array.init d (fun _ -> _map_int (Array.get r 0) e' d' copy))
+    | (IntTensor r, [], []) -> IntTensor r
+    | _ -> raise TensorInvariantViolated
+
+  let rec _map_float t source target copy = 
+    match (t, source, target) with
+    | (FloatScalar r, [], []) -> if copy then FloatScalar (ref (!r)) else FloatScalar r
+    | (FloatTensor r, e::e', d::d') -> 
+        if e = d then 
+          FloatTensor (Array.map (fun i -> _map_float i e' d' copy) r)
+        else
+          FloatTensor (Array.init d (fun _ -> _map_float (Array.get r 0) e' d' copy))
+    | (FloatTensor r, [], []) -> FloatTensor r
+    | _ -> raise TensorInvariantViolated
+
+  let rec _map_bool t source target copy = 
+    match (t, source, target) with
+    | (BoolScalar r, [], []) -> if copy then BoolScalar (ref (!r)) else BoolScalar r
+    | (BoolTensor r, e::e', d::d') -> 
+        if e = d then 
+          BoolTensor (Array.map (fun i -> _map_bool i e' d' copy) r)
+        else
+          BoolTensor (Array.init d (fun _ -> _map_bool (Array.get r 0) e' d' copy))
+    | (BoolTensor r, [], []) -> BoolTensor r
+    | _ -> raise TensorInvariantViolated
 
   
-  (*  let broadcast t s copy = let (source, data, grad, requires) = !t in
+  let _broadcast (type el) (t : el ref tensordata) 
+                 (source : int list) (lead : int list)
+                 (trail : int list) (copy : bool) : el ref tensordata =  
+    let f t b = if b then ref (!t) else t in
+    match t with
+    | FloatTensor r -> _new_float lead (_map_float (FloatTensor r) source trail copy) copy
+    | BoolTensor r -> _new_bool lead (_map_bool (BoolTensor r) source trail copy) copy
+    | IntTensor r -> _new_int lead (_map_int (IntTensor r) source trail copy) copy
+    | IntScalar r -> _new_int lead (IntScalar (f r copy)) copy
+    | FloatScalar r -> _new_float lead (FloatScalar (f r copy)) copy
+    | BoolScalar r -> _new_bool lead (BoolScalar (f r copy)) copy
+    | _ -> raise TensorInvariantViolated
+
+  let broadcast t destination copy = let (source, data, grad, requires) = !t in
+    let (lead_dim, trail_dim) = _check_broadcastable source destination in
+    let newdata = _broadcast data (Array.to_list source) lead_dim trail_dim copy in
+    let news = Array.of_list (lead_dim @ trail_dim) in
+    if copy then ref (news, newdata, grad, requires) else (t := (news, newdata, grad, requires); t)
+
+  (*  
+  | (IntScalar r, []) -> IntScalar (f r copy)
+ | (FloatScalar r, []) -> FloatScalar (f r copy)
+     | (BoolScalar r, []) -> BoolScalar (f r copy)
+  
+  let broadcast t s copy = let (source, data, grad, requires) = !t in
     let (lead_dim, trail_dim) = _check_broadcastable ) in
     _broadcast t source lead trail copy
   *)
