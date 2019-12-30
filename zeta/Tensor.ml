@@ -1,56 +1,4 @@
-module type Tensor =
-  sig
-
-  type _ tensordata = 
-    | IntScalar : int ref -> int ref tensordata
-    | FloatScalar : float ref -> float ref tensordata
-    | BoolScalar : bool ref -> bool ref tensordata
-    | IntTensor : int ref tensordata array -> int ref tensordata
-    | FloatTensor : float ref tensordata array -> float ref tensordata
-    | BoolTensor : bool ref tensordata array  -> bool ref tensordata
-    | None
-
-  type shape = int array
-  type 'a tensor = (shape * 'a ref tensordata * 'a ref tensordata * bool) ref
-  type index = int array
-
-  type op = 
-    | IntOp : (int -> int) -> op  
-    | BoolOp : (bool -> bool) -> op
-    | FloatOp : (float -> float) -> op
-  type predicate = 
-    | IntP : (int -> bool) -> predicate  
-    | BoolP : (bool -> bool) -> predicate
-    | FloatP : (float -> bool) -> predicate
-
-  exception TypeMismatch of string
-  exception TensorInvariantViolated
-  exception NullTensor
-  exception ShapeMismatch of string
-
-  val new_bool : shape -> bool -> bool tensor
-  val new_int : shape -> int -> int tensor
-  val new_float : shape -> float -> float tensor
-
-  val reduce : predicate -> (bool * bool -> bool) -> bool -> 'a tensordata -> bool 
-  val any : predicate -> 'a tensor -> bool
-  val all : predicate -> 'a tensor -> bool
-  val apply : op -> 'a tensor -> unit
-  
-  val get : 'a tensor -> index -> 'a
-  val set : 'a tensor -> index -> 'a -> unit
-
-  val abs : 'a tensor -> unit
-  val sigmoid : 'a tensor -> unit
-
-  (* val broadcast : 'a tensor -> shape -> bool -> unit *)
-
-  (* val add : 'a tensor -> 'a tensor -> 'a tensor -> unit *)
-
-  end 
-
-
-module T  =
+module Tensor =
   struct
 
   type _ tensordata = 
@@ -60,7 +8,7 @@ module T  =
       | IntTensor : int ref tensordata array -> int ref tensordata
       | FloatTensor : float ref tensordata array -> float ref tensordata
       | BoolTensor : bool ref tensordata array  -> bool ref tensordata
-      | None
+      | Null
 
   type shape = int array
   type 'a tensor = (shape * 'a ref tensordata * 'a ref tensordata * bool) ref
@@ -105,7 +53,7 @@ module T  =
   let reduce (type el) (f : predicate) (g : bool * bool -> bool) 
                         (v : bool) (t : el tensordata) : bool =
     match (f, t) with
-    | (_, None) -> raise NullTensor
+    | (_, Null) -> raise NullTensor
     | (BoolP f', BoolScalar e) -> f' (!e)
     | (BoolP f', BoolTensor e) -> _reduce_bool f' g v (BoolTensor e)
     | (IntP f', IntScalar e) -> f' (!e)
@@ -148,7 +96,7 @@ module T  =
 
   let _apply (type el) (f : op) (t : el tensordata) : unit =
     match (f, t) with
-    | (_, None) -> raise NullTensor
+    | (_, Null) -> raise NullTensor
     | (BoolOp f', BoolScalar e) -> e := (f' (!e))
     | (BoolOp f', BoolTensor e) -> _apply_bool f' (BoolTensor e)
     | (IntOp f', IntScalar e) -> e := (f' (!e))
@@ -181,7 +129,7 @@ module T  =
     | IntTensor e -> _apply (IntOp absi) (IntTensor e)
     | FloatScalar e -> _apply (FloatOp absf) (FloatScalar e)
     | FloatTensor e -> _apply (FloatOp absf) (FloatTensor e)
-    | None -> raise NullTensor
+    | Null -> raise NullTensor
   
   let abs (t : 'a tensor) = let (shape, data, grad, requires) = !t in _abs data
 
@@ -221,11 +169,11 @@ module T  =
     | BoolTensor r -> BoolTensor (Array.map (fun i -> _copy_bool i) r)
     | FloatTensor r -> FloatTensor (Array.map (fun i -> _copy_float i) r)
     | IntTensor r -> IntTensor (Array.map (fun i -> _copy_int i) r)
-    | None -> raise NullTensor
+    | Null -> Null
      else e
     
   let copy t = let (shape, data, grad, requires) = !t in
-    ref (shape, _copy(data), _copy(grad), requires)
+    ref (shape, _copy data true, _copy grad true, requires)
 
   let rec _new_bool (s : int list) v b = match s with
     | [] -> _copy v b
@@ -235,8 +183,8 @@ module T  =
   let new_bool (s : shape) v = 
     let s' = Array.to_list s in
     let v' = BoolScalar (ref v) in
-    try (_check_valid_shape s; (ref (s, _new_bool s' v' true, None, false) : bool tensor))
-    with ZeroDimension -> (ref (s, BoolTensor [||], None, false))
+    try (_check_valid_shape s; (ref (s, _new_bool s' v' true, Null, false) : bool tensor))
+    with ZeroDimension -> (ref (s, BoolTensor [||], Null, false))
 
   let rec _new_int (s : int list) v b = match s with
     | [] -> _copy v b
@@ -246,8 +194,8 @@ module T  =
   let new_int (s : shape) v = 
     let s' = Array.to_list s in
     let v' = IntScalar (ref v) in
-    try (_check_valid_shape s; (ref (s, _new_int s' v' true, None, false) : int tensor))
-    with ZeroDimension -> (ref (s, IntTensor [||], None, false))
+    try (_check_valid_shape s; (ref (s, _new_int s' v' true, Null, false) : int tensor))
+    with ZeroDimension -> (ref (s, IntTensor [||], Null, false))
 
 
   let rec _new_float (s : int list) v b = match s with
@@ -258,8 +206,8 @@ module T  =
   let new_float (s : shape) v = 
     let s' = Array.to_list s in
     let v' = FloatScalar (ref v) in
-    try (_check_valid_shape s; (ref (s, _new_float s' v' true, None, false) : float tensor))
-    with ZeroDimension -> (ref (s, FloatTensor [||], None, false))
+    try (_check_valid_shape s; (ref (s, _new_float s' v' true, Null, false) : float tensor))
+    with ZeroDimension -> (ref (s, FloatTensor [||], Null, false))
 
 
   let rec _new_t (type el) (s : int list) (v : el ref tensordata) b : el ref tensordata = 
@@ -277,13 +225,13 @@ module T  =
     | (e::s', BoolScalar t) -> _new_bool (e::s') (BoolScalar t) b
     | ([], BoolTensor t) -> _copy (BoolTensor t) b
     | (e::s', BoolTensor t) -> _new_bool (e::s') (BoolTensor t) b
-    | (_, None) -> raise NullTensor
+    | (_, Null) -> raise NullTensor
 
   let new_t (type el) (s : shape) (t : el tensor) b = 
     let s' = (Array.to_list s) in
     let (shape, data, grad, requires) = !t in
     let news = Array.of_list( List.append s' (Array.to_list shape) ) in
-    let newgrad = try (_new_t s' grad b) with NullTensor -> None in 
+    let newgrad = try (_new_t s' grad b) with NullTensor -> Null in 
     let newt = 
     try (_check_valid_shape s; (news, _new_t s' data b, newgrad , requires))
     with ZeroDimension -> match data with
@@ -293,7 +241,7 @@ module T  =
       | FloatTensor _ ->  (s, FloatTensor [||], FloatTensor [||], requires)
       | BoolScalar _ ->  (s, BoolTensor [||], BoolTensor [||], requires)
       | BoolTensor _ ->  (s, BoolTensor [||], BoolTensor [||], requires)
-      | None -> ( (s, None, None, requires))
+      | Null -> ( (s, Null, Null, requires))
     in
     if b then ref newt else (t := newt; t)
 
@@ -326,7 +274,7 @@ module T  =
     | _ -> raise TensorInvariantViolated
     
   let _check_valid_idx (data, shape, idx) =
-    match data with | None -> raise NullTensor | _ -> 
+    match data with | Null -> raise NullTensor | _ -> 
     let len1 = Array.length shape in
     let len2 = Array.length idx in
     if (len1) != (len2) then raise (IndexError (("Expected index of length "^(string_of_int len1))^("; Got "^(string_of_int len2)) ) )
@@ -409,8 +357,66 @@ module T  =
     let news = Array.of_list (lead_dim @ trail_dim) in
     if copy then ref (news, newdata, grad, requires) else (t := (news, newdata, grad, requires); t)
 
-  (*  
-  | (IntScalar r, []) -> IntScalar (f r copy)
+  let _elem_mul (type el) (t1 : el ref tensordata) (t2 : el ref tensordata) = 
+    let rec _elem_mul_float t1 t2 =
+      match (t1, t2) with
+      | (FloatScalar s, FloatScalar s') -> s := (!s *. !s')
+      | (FloatTensor t, FloatTensor t') -> (ignore (Array.mapi (fun i e -> _elem_mul_float (Array.get t i) e) t'); ())
+      | _ -> raise TensorInvariantViolated
+      in  
+    let rec _elem_mul_int t1 t2 =
+      match (t1, t2) with
+      | (IntScalar s, IntScalar s') -> s := (!s * !s')
+      | (IntTensor t, IntTensor t') -> (ignore (Array.mapi (fun i e -> _elem_mul_int (Array.get t i) e) t'); ())
+      | _ -> raise TensorInvariantViolated
+      in  
+    let rec _elem_mul_bool t1 t2 =
+      match (t1, t2) with
+      | (BoolScalar s, BoolScalar s') -> s := (!s && !s')
+      | (BoolTensor t, BoolTensor t') -> (ignore (Array.mapi (fun i e -> _elem_mul_bool (Array.get t i) e) t'); ())
+      | _ -> raise TensorInvariantViolated
+      in  
+    match (t1, t2) with
+    | (Null, _) -> raise NullTensor
+    | (_, Null) -> raise NullTensor
+    | (BoolScalar s, BoolScalar s') -> s := (!s && !s')
+    | (BoolScalar s, BoolTensor t) -> if !s then () else _apply (BoolOp (fun _ -> false)) (BoolTensor t)
+    | (BoolTensor t, BoolScalar s) -> if !s then () else _apply (BoolOp (fun _ -> false)) (BoolTensor t)
+    | (IntScalar s, IntScalar s') -> s := (!s * !s')
+    | (IntScalar s, IntTensor t) -> _apply (IntOp (fun i -> !s * i)) (IntTensor t)
+    | (IntTensor t, IntScalar s) -> _apply (IntOp (fun i -> !s * i)) (IntTensor t)
+    | (FloatScalar s, FloatScalar s') -> s := (!s *. !s')
+    | (FloatScalar s, FloatTensor t) -> _apply (FloatOp (fun i -> !s *. i)) (FloatTensor t)
+    | (FloatTensor t, FloatScalar s) -> _apply (FloatOp (fun i -> !s *. i)) (FloatTensor t)
+    | (FloatTensor t, FloatTensor t') -> _elem_mul_float (FloatTensor t) (FloatTensor t')
+    | (IntTensor t, IntTensor t') -> _elem_mul_int (IntTensor t) (IntTensor t')
+    | (BoolTensor t, BoolTensor t') -> _elem_mul_bool (BoolTensor t) (BoolTensor t')
+    | (_, _) -> raise (TypeMismatch "you can only multiply tensors of the same kind")
+  
+  let (#*) (t1 : 'a tensor) (t2 : 'a tensor) : 'a tensor = 
+    let ((s1, d1, g1, r1),(s2, d2, g2, r2)) = (!t1, !t2) in
+    let max_dim s1 s2 =
+      let (l1, l2) = ((List.rev (Array.to_list s1)),(List.rev (Array.to_list s2))) in
+      let rec max_dim' l1 l2 = 
+        match (l1, l2) with
+         | ([], []) -> []
+         | (x::xs, []) -> x::xs
+         | ([], x::xs) -> x::xs
+         | (x::xs, y::ys) -> (max x y)::(max_dim' xs ys) in
+      List.rev (max_dim' l1 l2) in
+    let news = Array.of_list (max_dim s1 s2) in
+    match (Array.length s1, Array.length s2, s1=s2) with
+        | (0, _, _) -> let newd = (_copy d2 true) in (_elem_mul d1 newd; ref (s2,newd,g2,r2))
+        | (_, 0, _) -> let newd = (_copy d1 true) in (_elem_mul newd d2; ref (s1,newd,g1,r1))
+        | (_, _, true) -> let newd = (_copy d1 true) in (_elem_mul newd d2; ref (s1,newd,g1,r1))
+        | (_, _, _) -> 
+          let 
+          ((_,t1',g1',r1'),(_,t2',_,_)) = (!(broadcast t1 news true),!(broadcast t2 news true)) in
+          (_elem_mul t1' t2'; ref (news,t1',g1',r1'))
+
+    (*  
+  
+    | (IntScalar r, []) -> IntScalar (f r copy)
  | (FloatScalar r, []) -> FloatScalar (f r copy)
      | (BoolScalar r, []) -> BoolScalar (f r copy)
   
