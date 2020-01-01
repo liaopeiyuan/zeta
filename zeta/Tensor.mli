@@ -1,32 +1,26 @@
 module type Tensor =
   sig
 
+  type _ tensordata = 
+    | IntScalar : int ref -> int ref tensordata
+    | FloatScalar : float ref -> float ref tensordata
+    | BoolScalar : bool ref -> bool ref tensordata
+    | IntTensor : int ref tensordata array -> int ref tensordata
+    | FloatTensor : float ref tensordata array -> float ref tensordata
+    | BoolTensor : bool ref tensordata array  -> bool ref tensordata
+    | Null
+  type 'a grad_fn = Empty | Fn of 'a ref tensordata ref list
+  type shape = int array
+  type 'a tensor = (shape * 'a ref tensordata * 'a ref tensordata * 'a grad_fn) ref
+  type index = int array
   type op = 
     | IntOp : (int -> int) -> op  
     | BoolOp : (bool -> bool) -> op
     | FloatOp : (float -> float) -> op
-
   type predicate = 
     | IntP : (int -> bool) -> predicate  
     | BoolP : (bool -> bool) -> predicate
     | FloatP : (float -> bool) -> predicate
-
-  type 'a tensordata = 
-      | IntScalar : int ref -> int tensordata
-      | FloatScalar : float ref -> float tensordata
-      | BoolScalar : bool ref -> bool tensordata
-      | IntTensor : int tensordata array -> int tensordata
-      | FloatTensor : float tensordata array -> float tensordata
-      | BoolTensor : bool tensordata array  -> bool tensordata
-      | Null
-      
-  type shape = int array
-  type index = int array
-
-  type 'a grad_fn = 
-    | Empty : 'a grad_fn 
-    | Fn : ('a tensor * op) array -> 'a grad_fn
-  and 'a tensor = (shape * 'a tensordata * 'a tensordata * 'a grad_fn) ref  
   
   exception TypeMismatch of string
   exception TensorInvariantViolated
@@ -34,6 +28,7 @@ module type Tensor =
   exception ShapeMismatch of string
   exception IndexError of string
   exception ZeroDimension
+
 
   val new_bool : shape -> bool -> bool tensor
   val new_int : shape -> int -> int tensor
