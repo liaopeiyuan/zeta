@@ -18,20 +18,27 @@ module Tensor =
       | IntTensor : int tensordata array -> int tensordata
       | FloatTensor : float tensordata array -> float tensordata
       | BoolTensor : bool tensordata array  -> bool tensordata
-      | Null
       
   type shape = int array
   type index = int array
 
-  (* Fn [||] are leaf tensors *)
-  type 'a grad_fn = 
-    | Empty : 'a grad_fn 
-    | Fn : ('a tensor * op * bool) array -> 'a grad_fn
-  and 'a tensor = (shape * 'a tensordata * 'a tensordata * 'a grad_fn) ref  
+  (* Next Layer *)
+  type 'a grad_fn = ('a tensor * op) array
+  (* Gradient : Retain for freshly constructed graphs and Grad for backpropped graphs
+                bool used to encode retrain_grad option
+   *)
+  and 'a gradient = Retain of bool | Grad of (bool * 'a tensordata)
+  (* Directed Acyclic Graph (DAG) for tensor operations: 
+       Null for "isolated" tensors that do not require gradient
+       GradGraph for tensors as nodes in the graph - 
+           gradient, node it's connected to with associated operations and node that connects to it
+   *)
+  and 'a directed_acyclic_graph = Null | GradGraph of ('a gradient * 'a grad_fn * 'a tensor array)
+  (* shape describes the dimensions of the data *)
+  and 'a tensor = (shape * 'a tensordata * 'a directed_acyclic_graph ) ref  
   
   exception TypeMismatch of string
   exception TensorInvariantViolated
-  exception NullTensor
   exception ShapeMismatch of string
   exception IndexError of string
   exception ZeroDimension
@@ -40,7 +47,6 @@ module Tensor =
   let rec _reduce : 'a. predicate -> (bool * bool -> bool) -> bool -> 'a tensordata -> bool =
     fun (type el) f g v (t : el tensordata) : bool ->
       match (f, t) with
-      | (_, Null) -> raise NullTensor
       | (BoolP f', BoolScalar e) -> f' (!e)
       | (BoolP f', BoolTensor e) -> Array.fold_left (fun b p -> g (b,(_reduce f g v p))) v e
       | (IntP f', IntScalar e) -> f' (!e)
@@ -56,7 +62,6 @@ module Tensor =
   let rec _apply : 'a. op -> 'a tensordata -> 'a tensordata = 
     fun (type el) (f : op) (t : el tensordata) : el tensordata ->
       match (f, t) with
-      | (_, Null) -> raise NullTensor
       | (BoolOp f', BoolScalar e) -> BoolScalar (ref (f' (!e)))
       | (BoolOp f', BoolTensor e) -> BoolTensor (Array.map (fun i -> _apply f i) e)
       | (IntOp f', IntScalar e) -> IntScalar (ref (f' (!e)))
@@ -65,10 +70,11 @@ module Tensor =
       | (FloatOp f', FloatTensor e) ->  FloatTensor (Array.map (fun i -> _apply f i) e)
       | (_, _) -> raise (TypeMismatch "You can only apply op and tensor of the same type")
 
+  (*
   let is_leaf (t : 'a tensor) : bool = let (shape, data, grad, grad_fn) = !t in 
     match grad_fn with
     | Empty -> true
-    | Fn x -> (Array.length x) = 0
+    | x -> (Array.length x) = 0
 
   let requries_grad (t : 'a tensor) (b : bool) : unit = let (shape, data, grad, grad_fn) = !t in 
     match (b, grad_fn) with
@@ -78,11 +84,13 @@ module Tensor =
                       else raise (AutogradError "you can only change requires_grad flags of leaf tensors.")
     | (false, Fn x) -> if (Array.length x) = 0 then t := (shape, data, grad, Empty)
                       else raise (AutogradError "you can only change requires_grad flags of leaf tensors.")
-            
+          
+  let retain_grad (t : 'a tensor) : unit = let (shape, data, grad, grad_fn) = !t in 
+  *)
   let apply f (t : 'a tensor) = let (shape, data, grad, grad_fn) = !t in 
     match grad_fn with 
     | Empty -> ref (shape, _apply f data, grad, Empty)
-    | Fn _ -> ref (shape, _apply f data, grad, Fn [|(t,f,false)|])
+    | Fn _ -> ref (shape, _apply f data, grad, Fn [|(t,f)|] )
 
   let sigmoid (t : 'a tensor) = apply (FloatOp (fun x -> Float.exp(x) /. (Float.exp(x) +. 1.0))) t
   
@@ -97,7 +105,6 @@ module Tensor =
     | IntTensor e -> _apply (IntOp absi) (IntTensor e)
     | FloatScalar e -> _apply (FloatOp absf) (FloatScalar e)
     | FloatTensor e -> _apply (FloatOp absf) (FloatTensor e)
-    | Null -> raise NullTensor
   
   let abs (t : 'a tensor) = 
     let (shape, data, grad, grad_fn) = !t in 
@@ -123,7 +130,6 @@ module Tensor =
       | BoolTensor r -> BoolTensor (Array.map (fun i -> _copy i b) r)
       | FloatTensor r -> FloatTensor (Array.map (fun i -> _copy i b) r)
       | IntTensor r -> IntTensor (Array.map (fun i -> _copy i b) r)
-      | Null -> Null
       else e
     
   let copy t = let (shape, data, grad, grad_fn) = !t in
@@ -178,13 +184,12 @@ module Tensor =
     | (e::s', BoolScalar t) -> _new_bool (e::s') (BoolScalar t) b
     | ([], BoolTensor t) -> _copy (BoolTensor t) b
     | (e::s', BoolTensor t) -> _new_bool (e::s') (BoolTensor t) b
-    | (_, Null) -> raise NullTensor
 
   let new_t (type el) (s : shape) (t : el tensor) b = 
     let s' = (Array.to_list s) in
     let (shape, data, grad, grad_fn) = !t in
     let news = Array.of_list( List.append s' (Array.to_list shape) ) in
-    let newgrad = try (_new_t s' grad b) with NullTensor -> Null in 
+    let newgrad = (_new_t s' grad b) in 
     let newt = 
     try (_check_valid_shape s; (news, _new_t s' data b, newgrad , grad_fn))
     with ZeroDimension -> match data with
@@ -194,7 +199,6 @@ module Tensor =
       | FloatTensor _ ->  (s, FloatTensor [||], FloatTensor [||], grad_fn)
       | BoolScalar _ ->  (s, BoolTensor [||], BoolTensor [||], grad_fn)
       | BoolTensor _ ->  (s, BoolTensor [||], BoolTensor [||], grad_fn)
-      | Null -> ( (s, Null, Null, grad_fn))
     in
     if b then ref newt else (t := newt; t)
 
@@ -210,7 +214,6 @@ module Tensor =
     | _ -> raise TensorInvariantViolated
     
   let _check_valid_idx (data, shape, idx) =
-    match data with | Null -> raise NullTensor | _ -> 
     let len1 = Array.length shape in
     let len2 = Array.length idx in
     if (len1) != (len2) then raise (IndexError (("Expected index of length "^(string_of_int len1))^("; Got "^(string_of_int len2)) ) )
@@ -289,8 +292,6 @@ module Tensor =
   let rec _elem_mul : 'a. 'a tensordata -> 'a tensordata -> 'a tensordata =
     fun (type el) (t1 : el tensordata) (t2 : el tensordata) : el tensordata ->
     match (t1, t2) with
-    | (Null, _) -> raise NullTensor
-    | (_, Null) -> raise NullTensor
     | (BoolScalar s, BoolScalar s') -> BoolScalar (ref (!s && !s'))
     | (BoolScalar s, BoolTensor t) -> if !s then _copy (BoolTensor t) true else _apply (BoolOp (fun _ -> false)) (BoolTensor t)
     | (BoolTensor t, BoolScalar s) -> if !s then _copy (BoolTensor t) true else _apply (BoolOp (fun _ -> false)) (BoolTensor t)
