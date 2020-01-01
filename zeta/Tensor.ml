@@ -202,11 +202,11 @@ module Tensor =
     fun (type el) (t : el tensordata) idx (f : el ref -> 'a) -> 
     match (t, idx) with
     | (FloatScalar r, []) -> f r
-    | (FloatTensor r, e::s') -> _getset (FloatTensor r) (e::s') f
+    | (FloatTensor r, e::s') -> _getset (Array.get r e) s' f
     | (IntScalar r, []) -> f r
-    | (IntTensor r, e::s') -> _getset (IntTensor r) (e::s') f
+    | (IntTensor r, e::s') -> _getset (Array.get r e) s' f
     | (BoolScalar r, []) -> f r
-    | (BoolTensor r, e::s') -> _getset (BoolTensor r) (e::s') f
+    | (BoolTensor r, e::s') -> _getset (Array.get r e) s' f
     | _ -> raise TensorInvariantViolated
     
   let _check_valid_idx (data, shape, idx) =
@@ -284,7 +284,7 @@ module Tensor =
     let (lead_dim, trail_dim) = _check_broadcastable source destination in
     let newdata = _broadcast data (Array.to_list source) lead_dim trail_dim copy in
     let news = Array.of_list (lead_dim @ trail_dim) in
-    if copy then ref (news, newdata, grad, grad_fn) else (t := (news, newdata, grad, grad_fn); t)
+      ref (news, newdata, grad, grad_fn)
 
   let rec _elem_mul : 'a. 'a tensordata -> 'a tensordata -> 'a tensordata =
     fun (type el) (t1 : el tensordata) (t2 : el tensordata) : el tensordata ->
@@ -305,8 +305,8 @@ module Tensor =
     | (BoolTensor t, BoolTensor t') -> BoolTensor (Array.mapi (fun i e -> _elem_mul (Array.get t i) e) t')
     | (_, _) -> raise (TypeMismatch "you can only multiply tensors of the same kind")
   
-    (*
-  let (#) (t1 : 'a tensor) (t2 : 'a tensor) : 'a tensor = 
+    
+  let (#*) (t1 : 'a tensor) (t2 : 'a tensor) : 'a tensor = 
     let ((s1, d1, g1, r1),(s2, d2, g2, r2)) = (!t1, !t2) in
     let max_dim s1 s2 =
       let (l1, l2) = ((List.rev (Array.to_list s1)),(List.rev (Array.to_list s2))) in
@@ -319,14 +319,14 @@ module Tensor =
       List.rev (max_dim' l1 l2) in
     let news = Array.of_list (max_dim s1 s2) in
     match (Array.length s1, Array.length s2, s1=s2) with
-        | (0, _, _) -> let newd = (_copy d2 true) in (_elem_mul d1 newd; ref (s2,newd,g2,r2))
-        | (_, 0, _) -> let newd = (_copy d1 true) in (_elem_mul newd d2; ref (s1,newd,g1,r1))
-        | (_, _, true) -> let newd = (_copy d1 true) in (_elem_mul newd d2; ref (s1,newd,g1,r1))
+        | (0, _, _) ->  ref (s2,_elem_mul d1 d2,g2,r2)
+        | (_, 0, _) ->  ref (s1,_elem_mul d1 d2,g1,r1)
+        | (_, _, true) -> ref (s1,_elem_mul d1 d2,g1,r1)
         | (_, _, _) -> 
           let 
           ((_,t1',g1',r1'),(_,t2',_,_)) = (!(broadcast t1 news true),!(broadcast t2 news true)) in
-          (_elem_mul t1' t2'; ref (news,t1',g1',r1'))
-     *)
+          ref (news,_elem_mul t1' t2',g1',r1')
+     
   
     (*  
     | (IntScalar r, []) -> IntScalar (f r copy)
