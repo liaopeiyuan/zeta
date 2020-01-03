@@ -160,9 +160,15 @@ module Tensor =
     match dag with
     | Null -> ref (shape, newd , Null)
     | Graph (End, x) -> let newt = ref (shape, newd, Graph (End, Node ([|t|], Retain false)) ) in 
-                        (t := (shape, data, Graph (Fn [|(newt, f)|], x )) ; newt )
+                        ( Printf.printf "Warning : you can only back-propagate with float tensors. \n" ;
+                          t := (shape, data, Graph (Fn [|(newt, f)|], x )) ; 
+                          newt 
+                        )
     | Graph (Fn l, x) -> let newt = ref (shape, newd, Graph (End, Node ([|t|], Retain false)) ) in 
-                        (t := (shape, data, Graph (Fn (Array.append [|(newt, f)|] l), x )) ; newt )
+                        ( Printf.printf "Warning : you can only back-propagate with float tensors. \n" ;
+                          t := (shape, data, Graph (Fn (Array.append [|(newt, f)|] l), x )) ; 
+                          newt 
+                        )
 
   let sigmoid (t : 'a tensor) = elem_apply (FloatOp (fun x -> Float.exp(x) /. (Float.exp(x) +. 1.0))) t
   
@@ -171,18 +177,28 @@ module Tensor =
     let absi v = if v > 0 then v else v * (-1) in
     let absb _ = true in
     match t with
-    | BoolScalar e -> _apply (BoolOp absb) (BoolScalar e)
-    | BoolTensor e -> _apply (BoolOp absb) (BoolTensor e)
-    | IntScalar e -> _apply (IntOp absi) (IntScalar e)
-    | IntTensor e -> _apply (IntOp absi) (IntTensor e)
-    | FloatScalar e -> _apply (FloatOp absf) (FloatScalar e)
-    | FloatTensor e -> _apply (FloatOp absf) (FloatTensor e)
+    | BoolScalar e -> _elem_apply (BoolOp absb) (BoolScalar e)
+    | BoolTensor e -> _elem_apply (BoolOp absb) (BoolTensor e)
+    | IntScalar e -> _elem_apply (IntOp absi) (IntScalar e)
+    | IntTensor e -> _elem_apply (IntOp absi) (IntTensor e)
+    | FloatScalar e -> _elem_apply (FloatOp absf) (FloatScalar e)
+    | FloatTensor e -> _elem_apply (FloatOp absf) (FloatTensor e)
   
   let abs (t : 'a tensor) = 
-    let (shape, data, grad, grad_fn) = !t in 
-    match grad_fn with 
-    | Empty -> ref (shape, _abs data, grad, Empty)
-    | Fn _ -> ref (shape, _abs data, grad, Fn [|(t,FloatOp (fun x -> x),false)|])
+    let (shape, data, dag) = !t in 
+    let newd = _abs data in
+    match dag with
+    | Null -> ref (shape, newd , Null)
+    | Graph (End, x) -> let newt = ref (shape, newd, Graph (End, Node ([|t|], Retain false)) ) in 
+                        ( Printf.printf "Warning : you can only back-propagate with float tensors. \n" ;
+                          t := (shape, data, Graph (Fn [|(newt, FloatOp (fun x -> x))|], x )) ; 
+                          newt 
+                        )
+    | Graph (Fn l, x) -> let newt = ref (shape, newd, Graph (End, Node ([|t|], Retain false)) ) in 
+                        ( Printf.printf "Warning : you can only back-propagate with float tensors. \n" ;
+                          t := (shape, data, Graph (Fn (Array.append [|(newt, FloatOp (fun x -> x))|] l), x )) ; 
+                          newt 
+                        )
 
   let rec _new_t (type el) (s : int list) (v : el tensordata) b : el tensordata = 
     let f t b = if b then ref (!t) else t in
