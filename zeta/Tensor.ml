@@ -61,13 +61,20 @@ module Tensor =
     | (false, Null) -> Printf.printf "Warning : isolated leaf tensors does not require gradient. \n"
     | (_, Graph (_, Node _)) -> raise (AutogradError "you can only change requires_grad flags of leaf tensors.")
     | (true, Graph (_, LeafGrad _)) -> Printf.printf "Warning : tensor requires gradient already. \n"
-    | (false, Graph (a, LeafGrad _)) -> t := (shape, data, grad, Graph (a, LeafNoGrad))
-    | (true, Graph (a, LeafNoGrad)) -> t := (shape, data, grad, Graph (a, LeafGrad (Retain false)))
+    | (false, Graph (a, LeafGrad _)) -> t := (shape, data, Graph (a, LeafNoGrad))
+    | (true, Graph (a, LeafNoGrad)) -> t := (shape, data, Graph (a, LeafGrad (Retain false)))
     | (false, Graph (a, LeafNoGrad)) -> Printf.printf "Warning : leaf tensors does not require gradient already. \n"
 
-  (*        
-  let retain_grad (t : 'a tensor) : unit = let (shape, data, dag) = !t in 
-  *)
+         
+  let retain_grad (t : 'a tensor) (b : bool) : unit = let (shape, data, dag) = !t in 
+    match (dag) with
+    | Null -> raise (AutogradError "tensor does not require gradient.")
+    | Graph (a, Node (p, Retain _)) -> t := (shape, data, Graph (a, Node (p, Retain b)))
+    | Graph (a, Node (p, Grad (_, d))) -> t := (shape, data, Graph (a, Node (p, Grad (b, d))) )
+    | Graph (a, LeafNoGrad ) -> raise (AutogradError "leaf tensor does not require gradient.")
+    | Graph (a, LeafGrad (Retain _) ) -> t := (shape, data, Graph (a, LeafGrad (Retain b) ) )
+    | Graph (a, LeafGrad (Grad (_,d)) ) -> t := (shape, data, Graph (a, LeafGrad (Grad (b,d)) ) )
+  
 
   let rec _reduce : 'a. predicate -> (bool * bool -> bool) -> bool -> 'a tensordata -> bool =
     fun (type el) f g v (t : el tensordata) : bool ->
