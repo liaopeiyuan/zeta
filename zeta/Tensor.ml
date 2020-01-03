@@ -54,7 +54,6 @@ module Tensor =
     | Graph (_, LeafGrad _) -> true
     | Graph (_, Node _) -> false
 
-  
   let requries_grad (t : 'a tensor) (b : bool) : unit = let (shape, data, dag) = !t in 
     match (b, dag) with
     | (true, Null) -> t := (shape, data, Graph (End, LeafGrad (Retain false)))
@@ -64,10 +63,9 @@ module Tensor =
     | (false, Graph (a, LeafGrad _)) -> t := (shape, data, Graph (a, LeafNoGrad))
     | (true, Graph (a, LeafNoGrad)) -> t := (shape, data, Graph (a, LeafGrad (Retain false)))
     | (false, Graph (a, LeafNoGrad)) -> Printf.printf "Warning : leaf tensors does not require gradient already. \n"
-
-         
+   
   let retain_grad (t : 'a tensor) (b : bool) : unit = let (shape, data, dag) = !t in 
-    match (dag) with
+    match dag with
     | Null -> raise (AutogradError "tensor does not require gradient.")
     | Graph (a, Node (p, Retain _)) -> t := (shape, data, Graph (a, Node (p, Retain b)))
     | Graph (a, Node (p, Grad (_, d))) -> t := (shape, data, Graph (a, Node (p, Grad (b, d))) )
@@ -75,67 +73,15 @@ module Tensor =
     | Graph (a, LeafGrad (Retain _) ) -> t := (shape, data, Graph (a, LeafGrad (Retain b) ) )
     | Graph (a, LeafGrad (Grad (_,d)) ) -> t := (shape, data, Graph (a, LeafGrad (Grad (b,d)) ) )
   
+  let detach (t : 'a tensor) : 'a tensor = let (shape, data, dag) = !t in ref (shape, data, Null)
 
-  let rec _reduce : 'a. predicate -> (bool * bool -> bool) -> bool -> 'a tensordata -> bool =
-    fun (type el) f g v (t : el tensordata) : bool ->
-      match (f, t) with
-      | (BoolP f', BoolScalar e) -> f' (!e)
-      | (BoolP f', BoolTensor e) -> Array.fold_left (fun b p -> g (b,(_reduce f g v p))) v e
-      | (IntP f', IntScalar e) -> f' (!e)
-      | (IntP f', IntTensor e) -> Array.fold_left (fun b p -> g (b,(_reduce f g v p))) v e
-      | (FloatP f', FloatScalar e) -> f' (!e)
-      | (FloatP f', FloatTensor e) -> Array.fold_left (fun b p -> g (b,(_reduce f g v p))) v e
-      | (_, _) -> raise (TypeMismatch "You can only apply predicate and tensor of the same type")
-
-  let reduce f g v (t : 'a tensor) = let (shape, data, dag) = !t in _reduce f g v data
-  let all f (t : 'a tensor) = let (shape, data, dag) = !t in _reduce f (fun (x,y) -> x && y) true data
-  let any f (t : 'a tensor) = let (shape, data, dag) = !t in _reduce f (fun (x,y) -> x || y) false data
-
-  let rec _apply : 'a. op -> 'a tensordata -> 'a tensordata = 
-    fun (type el) (f : op) (t : el tensordata) : el tensordata ->
-      match (f, t) with
-      | (BoolOp f', BoolScalar e) -> BoolScalar (ref (f' (!e)))
-      | (BoolOp f', BoolTensor e) -> BoolTensor (Array.map (fun i -> _apply f i) e)
-      | (IntOp f', IntScalar e) -> IntScalar (ref (f' (!e)))
-      | (IntOp f', IntTensor e) ->  IntTensor (Array.map (fun i -> _apply f i) e)
-      | (FloatOp f', FloatScalar e) -> FloatScalar (ref (f' (!e)))
-      | (FloatOp f', FloatTensor e) ->  FloatTensor (Array.map (fun i -> _apply f i) e)
-      | (_, _) -> raise (TypeMismatch "You can only apply op and tensor of the same type")
-
-  let apply f (t : 'a tensor) = let (shape, data, grad, grad_fn) = !t in 
-    match grad_fn with 
-    | Empty -> ref (shape, _apply f data, grad, Empty)
-    | Fn _ -> ref (shape, _apply f data, grad, Fn [|(t,f)|] )
-
-  let sigmoid (t : 'a tensor) = apply (FloatOp (fun x -> Float.exp(x) /. (Float.exp(x) +. 1.0))) t
-  
-  let _abs (type el) (t : el tensordata) : el tensordata =
-    let absf v = if v > 0.0 then v else v *. (-1.0) in
-    let absi v = if v > 0 then v else v * (-1) in
-    let absb _ = true in
-    match t with
-    | BoolScalar e -> _apply (BoolOp absb) (BoolScalar e)
-    | BoolTensor e -> _apply (BoolOp absb) (BoolTensor e)
-    | IntScalar e -> _apply (IntOp absi) (IntScalar e)
-    | IntTensor e -> _apply (IntOp absi) (IntTensor e)
-    | FloatScalar e -> _apply (FloatOp absf) (FloatScalar e)
-    | FloatTensor e -> _apply (FloatOp absf) (FloatTensor e)
-  
-  let abs (t : 'a tensor) = 
-    let (shape, data, grad, grad_fn) = !t in 
-    match grad_fn with 
-    | Empty -> ref (shape, _abs data, grad, Empty)
-    | Fn _ -> ref (shape, _abs data, grad, Fn [|(t,FloatOp (fun x -> x),false)|])
-
-  
   let _check_valid_shape shape =
     let len = Array.length shape in
     if (Array.fold_left (fun x y -> x || y) false (Array.init len (fun i -> (Array.get shape i)<0)) ) then raise (IndexError "Negative size along one of the dimensions")
     else if (Array.fold_left (fun x y -> x || y) false (Array.init len (fun i -> (Array.get shape i)=0)) )
     then (Printf.printf "Warning : one of the dimensions is zero. \n"; raise ZeroDimension)
     else ()
-
-    
+ 
   let rec _copy : 'a. 'a tensordata -> bool -> 'a tensordata =
     fun (type el) (e : el tensordata) (b : bool) : el tensordata ->
       if b then match e with
@@ -147,8 +93,8 @@ module Tensor =
       | IntTensor r -> IntTensor (Array.map (fun i -> _copy i b) r)
       else e
     
-  let copy t = let (shape, data, grad, grad_fn) = !t in
-    ref (shape, _copy data true, _copy grad true, grad_fn)
+  let copy t = let (shape, data, dag) = !t in
+    ref (shape, _copy data true, dag)
 
   let rec _new_bool (s : int list) v b = match s with
     | [] -> _copy v b
@@ -168,21 +114,75 @@ module Tensor =
   let new_bool (s : shape) v = 
     let s' = Array.to_list s in
     let v' = BoolScalar (ref v) in
-    try (_check_valid_shape s; (ref (s, _new_bool s' v' true, Null, Empty) : bool tensor))
-    with ZeroDimension -> (ref (s, BoolTensor [||], Null, Empty))
+    try (_check_valid_shape s; (ref (s, _new_bool s' v' true, Null) : bool tensor))
+    with ZeroDimension -> (ref (s, BoolTensor [||], Null))
 
   let new_int (s : shape) v = 
     let s' = Array.to_list s in
     let v' = IntScalar (ref v) in
-    try (_check_valid_shape s; (ref (s, _new_int s' v' true, Null, Empty) : int tensor))
-    with ZeroDimension -> (ref (s, IntTensor [||], Null, Empty))
+    try (_check_valid_shape s; (ref (s, _new_int s' v' true, Null) : int tensor))
+    with ZeroDimension -> (ref (s, IntTensor [||], Null))
 
   let new_float (s : shape) v = 
     let s' = Array.to_list s in
     let v' = FloatScalar (ref v) in
-    try (_check_valid_shape s; (ref (s, _new_float s' v' true, Null, Empty) : float tensor))
-    with ZeroDimension -> (ref (s, FloatTensor [||], Null, Empty))
+    try (_check_valid_shape s; (ref (s, _new_float s' v' true, Null) : float tensor))
+    with ZeroDimension -> (ref (s, FloatTensor [||], Null))
 
+  let rec _reduce : 'a. predicate -> (bool * bool -> bool) -> bool -> 'a tensordata -> bool =
+    fun (type el) f g v (t : el tensordata) : bool ->
+      match (f, t) with
+      | (BoolP f', BoolScalar e) -> f' (!e)
+      | (BoolP f', BoolTensor e) -> Array.fold_left (fun b p -> g (b,(_reduce f g v p))) v e
+      | (IntP f', IntScalar e) -> f' (!e)
+      | (IntP f', IntTensor e) -> Array.fold_left (fun b p -> g (b,(_reduce f g v p))) v e
+      | (FloatP f', FloatScalar e) -> f' (!e)
+      | (FloatP f', FloatTensor e) -> Array.fold_left (fun b p -> g (b,(_reduce f g v p))) v e
+      | (_, _) -> raise (TypeMismatch "You can only apply predicate and tensor of the same type")
+
+  let reduce f g v (t : 'a tensor) = let (shape, data, dag) = !t in _reduce f g v data
+  let all f (t : 'a tensor) = let (shape, data, dag) = !t in _reduce f (fun (x,y) -> x && y) true data
+  let any f (t : 'a tensor) = let (shape, data, dag) = !t in _reduce f (fun (x,y) -> x || y) false data
+
+  let rec _elem_apply : 'a. op -> 'a tensordata -> 'a tensordata = 
+    fun (type el) (f : op) (t : el tensordata) : el tensordata ->
+      match (f, t) with
+      | (BoolOp f', BoolScalar e) -> BoolScalar (ref (f' (!e)))
+      | (BoolOp f', BoolTensor e) -> BoolTensor (Array.map (fun i -> _elem_apply f i) e)
+      | (IntOp f', IntScalar e) -> IntScalar (ref (f' (!e)))
+      | (IntOp f', IntTensor e) ->  IntTensor (Array.map (fun i -> _elem_apply f i) e)
+      | (FloatOp f', FloatScalar e) -> FloatScalar (ref (f' (!e)))
+      | (FloatOp f', FloatTensor e) ->  FloatTensor (Array.map (fun i -> _elem_apply f i) e)
+      | (_, _) -> raise (TypeMismatch "You can only apply op and tensor of the same type")
+
+  let elem_apply f (t : 'a tensor) = let (shape, data, dag) = !t in 
+    let newd = _elem_apply f data in
+    match dag with
+    | Null -> ref (shape, newd , Null)
+    | Graph (End, x) -> let newt = ref (shape, newd, Graph (End, Node ([|t|], Retain false)) ) in 
+                        (t := (shape, data, Graph (Fn [|(newt, f)|], x )) ; newt )
+    | Graph (Fn l, x) -> let newt = ref (shape, newd, Graph (End, Node ([|t|], Retain false)) ) in 
+                        (t := (shape, data, Graph (Fn (Array.append [|(newt, f)|] l), x )) ; newt )
+
+  let sigmoid (t : 'a tensor) = elem_apply (FloatOp (fun x -> Float.exp(x) /. (Float.exp(x) +. 1.0))) t
+  
+  let _abs (type el) (t : el tensordata) : el tensordata =
+    let absf v = if v > 0.0 then v else v *. (-1.0) in
+    let absi v = if v > 0 then v else v * (-1) in
+    let absb _ = true in
+    match t with
+    | BoolScalar e -> _apply (BoolOp absb) (BoolScalar e)
+    | BoolTensor e -> _apply (BoolOp absb) (BoolTensor e)
+    | IntScalar e -> _apply (IntOp absi) (IntScalar e)
+    | IntTensor e -> _apply (IntOp absi) (IntTensor e)
+    | FloatScalar e -> _apply (FloatOp absf) (FloatScalar e)
+    | FloatTensor e -> _apply (FloatOp absf) (FloatTensor e)
+  
+  let abs (t : 'a tensor) = 
+    let (shape, data, grad, grad_fn) = !t in 
+    match grad_fn with 
+    | Empty -> ref (shape, _abs data, grad, Empty)
+    | Fn _ -> ref (shape, _abs data, grad, Fn [|(t,FloatOp (fun x -> x),false)|])
 
   let rec _new_t (type el) (s : int list) (v : el tensordata) b : el tensordata = 
     let f t b = if b then ref (!t) else t in
