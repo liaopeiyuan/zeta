@@ -23,17 +23,20 @@ module Tensor =
   type index = int array
 
   (* Next Layer *)
-  type 'a grad_fn = ('a tensor * op) array
-  (* Gradient : Retain for freshly constructed graphs and Grad for backpropped graphs
+  (* Gradient : RetainRequire for freshly constructed graphs and tensors that don't require gradient
+                 and Grad for backpropped graphs
                 bool used to encode retrain_grad option
    *)
-  and 'a gradient = Retain of bool | Grad of (bool * 'a tensordata)
   (* Directed Acyclic Graph (DAG) for tensor operations: 
-       Null for "isolated" tensors that do not require gradient
-       GradGraph for tensors as nodes in the graph - 
-           gradient, node it's connected to with associated operations and node that connects to it
-   *)
-  and 'a directed_acyclic_graph = Null | GradGraph of ('a gradient * 'a grad_fn * 'a tensor array)
+      Null for "isolated" tensors that do not belong to any graph
+      Graph for tensors as nodes in the graph - 
+          gradient, node it's connected to with associated operations and node that connects to it
+  *)
+  type 'a grad_fn = End | Fn of ('a tensor * op) array
+  and 'a gradient = Retain of bool | Grad of (bool * 'a tensordata)
+  and 'a parent = 'a tensor array
+  and 'a node = LeafNoGrad | LeafGrad of 'a gradient | Node of ('a parent * 'a gradient)
+  and 'a directed_acyclic_graph = Null | Graph of ('a grad_fn * 'a node)
   (* shape describes the dimensions of the data *)
   and 'a tensor = (shape * 'a tensordata * 'a directed_acyclic_graph ) ref  
   
@@ -43,6 +46,28 @@ module Tensor =
   exception IndexError of string
   exception ZeroDimension
   exception AutogradError of string
+
+  let is_leaf (t : 'a tensor) : bool = let (shape, data, dag) = !t in 
+    match dag with
+    | Null -> true
+    | Graph (_, LeafNoGrad) -> true
+    | Graph (_, LeafGrad _) -> true
+    | Graph (_, Node _) -> false
+
+  
+  let requries_grad (t : 'a tensor) (b : bool) : unit = let (shape, data, dag) = !t in 
+    match (b, dag) with
+    | (true, Null) -> t := (shape, data, Graph (End, LeafGrad (Retain false)))
+    | (false, Null) -> Printf.printf "Warning : isolated leaf tensors does not require gradient. \n"
+    | (_, Graph (_, Node _)) -> raise (AutogradError "you can only change requires_grad flags of leaf tensors.")
+    | (true, Graph (_, LeafGrad _)) -> Printf.printf "Warning : tensor requires gradient already. \n"
+    | (false, Graph (a, LeafGrad _)) -> t := (shape, data, grad, Graph (a, LeafNoGrad))
+    | (true, Graph (a, LeafNoGrad)) -> t := (shape, data, grad, Graph (a, LeafGrad (Retain false)))
+    | (false, Graph (a, LeafNoGrad)) -> Printf.printf "Warning : leaf tensors does not require gradient already. \n"
+
+  (*        
+  let retain_grad (t : 'a tensor) : unit = let (shape, data, dag) = !t in 
+  *)
 
   let rec _reduce : 'a. predicate -> (bool * bool -> bool) -> bool -> 'a tensordata -> bool =
     fun (type el) f g v (t : el tensordata) : bool ->
@@ -55,9 +80,9 @@ module Tensor =
       | (FloatP f', FloatTensor e) -> Array.fold_left (fun b p -> g (b,(_reduce f g v p))) v e
       | (_, _) -> raise (TypeMismatch "You can only apply predicate and tensor of the same type")
 
-  let reduce f g v (t : 'a tensor) = let (shape, data, grad, grad_fn) = !t in _reduce f g v data
-  let all f (t : 'a tensor) = let (shape, data, grad, grad_fn) = !t in _reduce f (fun (x,y) -> x && y) true data
-  let any f (t : 'a tensor) = let (shape, data, grad, grad_fn) = !t in _reduce f (fun (x,y) -> x || y) false data
+  let reduce f g v (t : 'a tensor) = let (shape, data, dag) = !t in _reduce f g v data
+  let all f (t : 'a tensor) = let (shape, data, dag) = !t in _reduce f (fun (x,y) -> x && y) true data
+  let any f (t : 'a tensor) = let (shape, data, dag) = !t in _reduce f (fun (x,y) -> x || y) false data
 
   let rec _apply : 'a. op -> 'a tensordata -> 'a tensordata = 
     fun (type el) (f : op) (t : el tensordata) : el tensordata ->
@@ -70,23 +95,6 @@ module Tensor =
       | (FloatOp f', FloatTensor e) ->  FloatTensor (Array.map (fun i -> _apply f i) e)
       | (_, _) -> raise (TypeMismatch "You can only apply op and tensor of the same type")
 
-  (*
-  let is_leaf (t : 'a tensor) : bool = let (shape, data, grad, grad_fn) = !t in 
-    match grad_fn with
-    | Empty -> true
-    | x -> (Array.length x) = 0
-
-  let requries_grad (t : 'a tensor) (b : bool) : unit = let (shape, data, grad, grad_fn) = !t in 
-    match (b, grad_fn) with
-    | (true, Empty) -> t := (shape, data, grad, Fn [||])
-    | (false, Empty) -> Printf.printf "Warning : tensor does not require gradient already. \n"
-    | (true, Fn x) -> if (Array.length x) = 0 then Printf.printf "Warning : tensor requires gradient already. \n"
-                      else raise (AutogradError "you can only change requires_grad flags of leaf tensors.")
-    | (false, Fn x) -> if (Array.length x) = 0 then t := (shape, data, grad, Empty)
-                      else raise (AutogradError "you can only change requires_grad flags of leaf tensors.")
-          
-  let retain_grad (t : 'a tensor) : unit = let (shape, data, grad, grad_fn) = !t in 
-  *)
   let apply f (t : 'a tensor) = let (shape, data, grad, grad_fn) = !t in 
     match grad_fn with 
     | Empty -> ref (shape, _apply f data, grad, Empty)
