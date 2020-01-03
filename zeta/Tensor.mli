@@ -23,17 +23,20 @@ module type Tensor =
   type index = int array
 
   (* Next Layer *)
-  type 'a grad_fn = ('a tensor * op) array
-  (* Gradient : Retain for freshly constructed graphs and Grad for backpropped graphs
+  (* Gradient : RetainRequire for freshly constructed graphs and tensors that don't require gradient
+                 and Grad for backpropped graphs
                 bool used to encode retrain_grad option
    *)
-  and 'a gradient = Retain of bool | Grad of (bool * 'a tensordata)
   (* Directed Acyclic Graph (DAG) for tensor operations: 
-       Null for "isolated" tensors that do not require gradient
-       GradGraph for tensors as nodes in the graph - 
-           gradient, node it's connected to with associated operations and node that connects to it
-   *)
-  and 'a directed_acyclic_graph = Null | GradGraph of ('a gradient * 'a grad_fn * 'a tensor array)
+      Null for "isolated" tensors that do not belong to any graph
+      Graph for tensors as nodes in the graph - 
+          gradient, node it's connected to with associated operations and node that connects to it
+  *)
+  type 'a grad_fn = End | Fn of ('a tensor * op) array
+  and 'a gradient = Retain of bool | Grad of (bool * 'a tensordata)
+  and 'a parent = 'a tensor array
+  and 'a node = LeafNoGrad | LeafGrad of 'a gradient | Node of ('a parent * 'a gradient)
+  and 'a directed_acyclic_graph = Null | Graph of ('a grad_fn * 'a node)
   (* shape describes the dimensions of the data *)
   and 'a tensor = (shape * 'a tensordata * 'a directed_acyclic_graph ) ref  
   
