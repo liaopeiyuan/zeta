@@ -218,18 +218,17 @@ module Tensor =
 
   let new_t (type el) (s : shape) (t : el tensor) b = 
     let s' = (Array.to_list s) in
-    let (shape, data, grad, grad_fn) = !t in
+    let (shape, data, dag) = !t in
     let news = Array.of_list( List.append s' (Array.to_list shape) ) in
-    let newgrad = (_new_t s' grad b) in 
     let newt = 
-    try (_check_valid_shape s; (news, _new_t s' data b, newgrad , grad_fn))
+    try (_check_valid_shape s; (news, _new_t s' data b, dag))
     with ZeroDimension -> match data with
-      | IntScalar _ ->  (s, IntTensor [||], IntTensor [||], grad_fn)
-      | IntTensor _ ->  (s, IntTensor [||], IntTensor [||], grad_fn)
-      | FloatScalar _ ->  (s, FloatTensor [||], FloatTensor [||], grad_fn)
-      | FloatTensor _ ->  (s, FloatTensor [||], FloatTensor [||], grad_fn)
-      | BoolScalar _ ->  (s, BoolTensor [||], BoolTensor [||], grad_fn)
-      | BoolTensor _ ->  (s, BoolTensor [||], BoolTensor [||], grad_fn)
+      | IntScalar _ ->  (s, IntTensor [||], dag)
+      | IntTensor _ ->  (s, IntTensor [||], dag)
+      | FloatScalar _ ->  (s, FloatTensor [||], dag)
+      | FloatTensor _ ->  (s, FloatTensor [||], dag)
+      | BoolScalar _ ->  (s, BoolTensor [||], dag)
+      | BoolTensor _ ->  (s, BoolTensor [||], dag)
     in
     if b then ref newt else (t := newt; t)
 
@@ -253,10 +252,10 @@ module Tensor =
     then raise (IndexError "Array index out of bound")
     else ()
 
-  let set (t : 'a tensor) idx e = let (shape, data, grad, grad_fn) = !t in
+  let set (t : 'a tensor) idx e = let (shape, data, dag) = !t in
     (_check_valid_idx (data, shape, idx) ; _getset data (Array.to_list idx) (fun x -> x := e))
 
-  let get (t : 'a tensor) idx = let (shape, data, grad, grad_fn) = !t in
+  let get (t : 'a tensor) idx = let (shape, data, dag) = !t in
     (_check_valid_idx (data, shape, idx) ; _getset data (Array.to_list idx) (fun x -> !x))
 
   (* dangerous *)
@@ -314,24 +313,24 @@ module Tensor =
     | BoolScalar r -> _new_bool lead (BoolScalar (f r copy)) copy
     | _ -> raise TensorInvariantViolated
 
-  let broadcast t destination copy = let (source, data, grad, grad_fn) = !t in
+  let broadcast t destination copy = let (source, data, dag) = !t in
     let (lead_dim, trail_dim) = _check_broadcastable source destination in
     let newdata = _broadcast data (Array.to_list source) lead_dim trail_dim copy in
     let news = Array.of_list (lead_dim @ trail_dim) in
-      ref (news, newdata, grad, grad_fn)
+      ref (news, newdata, dag)
 
   let rec _elem_mul : 'a. 'a tensordata -> 'a tensordata -> 'a tensordata =
     fun (type el) (t1 : el tensordata) (t2 : el tensordata) : el tensordata ->
     match (t1, t2) with
     | (BoolScalar s, BoolScalar s') -> BoolScalar (ref (!s && !s'))
-    | (BoolScalar s, BoolTensor t) -> if !s then _copy (BoolTensor t) true else _apply (BoolOp (fun _ -> false)) (BoolTensor t)
-    | (BoolTensor t, BoolScalar s) -> if !s then _copy (BoolTensor t) true else _apply (BoolOp (fun _ -> false)) (BoolTensor t)
+    | (BoolScalar s, BoolTensor t) -> if !s then _copy (BoolTensor t) true else _elem_apply (BoolOp (fun _ -> false)) (BoolTensor t)
+    | (BoolTensor t, BoolScalar s) -> if !s then _copy (BoolTensor t) true else _elem_apply (BoolOp (fun _ -> false)) (BoolTensor t)
     | (IntScalar s, IntScalar s') -> IntScalar (ref (!s * !s'))
-    | (IntScalar s, IntTensor t) -> _apply (IntOp (fun i -> !s * i)) (IntTensor t)
-    | (IntTensor t, IntScalar s) -> _apply (IntOp (fun i -> !s * i)) (IntTensor t)
+    | (IntScalar s, IntTensor t) -> _elem_apply (IntOp (fun i -> !s * i)) (IntTensor t)
+    | (IntTensor t, IntScalar s) -> _elem_apply (IntOp (fun i -> !s * i)) (IntTensor t)
     | (FloatScalar s, FloatScalar s') -> FloatScalar (ref (!s *. !s'))
-    | (FloatScalar s, FloatTensor t) -> _apply (FloatOp (fun i -> !s *. i)) (FloatTensor t)
-    | (FloatTensor t, FloatScalar s) -> _apply (FloatOp (fun i -> !s *. i)) (FloatTensor t)
+    | (FloatScalar s, FloatTensor t) -> _elem_apply (FloatOp (fun i -> !s *. i)) (FloatTensor t)
+    | (FloatTensor t, FloatScalar s) -> _elem_apply (FloatOp (fun i -> !s *. i)) (FloatTensor t)
     | (FloatTensor t, FloatTensor t') -> FloatTensor (Array.mapi (fun i e -> _elem_mul (Array.get t i) e) t')
     | (IntTensor t, IntTensor t') -> IntTensor (Array.mapi (fun i e -> _elem_mul (Array.get t i) e) t')
     | (BoolTensor t, BoolTensor t') -> BoolTensor (Array.mapi (fun i e -> _elem_mul (Array.get t i) e) t')
@@ -339,7 +338,7 @@ module Tensor =
   
     
   let (#*) (t1 : 'a tensor) (t2 : 'a tensor) : 'a tensor = 
-    let ((s1, d1, g1, r1),(s2, d2, g2, r2)) = (!t1, !t2) in
+    let ((s1, d1, dag1),(s2, d2, dag2)) = (!t1, !t2) in
     let max_dim s1 s2 =
       let (l1, l2) = ((List.rev (Array.to_list s1)),(List.rev (Array.to_list s2))) in
       let rec max_dim' l1 l2 = 
@@ -351,13 +350,13 @@ module Tensor =
       List.rev (max_dim' l1 l2) in
     let news = Array.of_list (max_dim s1 s2) in
     match (Array.length s1, Array.length s2, s1=s2) with
-        | (0, _, _) ->  ref (s2,_elem_mul d1 d2,g2,r2)
-        | (_, 0, _) ->  ref (s1,_elem_mul d1 d2,g1,r1)
-        | (_, _, true) -> ref (s1,_elem_mul d1 d2,g1,r1)
+        | (0, _, _) ->  ref (s2,_elem_mul d1 d2,dag2)
+        | (_, 0, _) ->  ref (s1,_elem_mul d1 d2,dag1)
+        | (_, _, true) -> ref (s1,_elem_mul d1 d2,dag1)
         | (_, _, _) -> 
           let 
-          ((_,t1',g1',r1'),(_,t2',_,_)) = (!(broadcast t1 news true),!(broadcast t2 news true)) in
-          ref (news,_elem_mul t1' t2',g1',r1')
+          ((_,t1',dag1),(_,t2',_)) = (!(broadcast t1 news true),!(broadcast t2 news true)) in
+          ref (news,_elem_mul t1' t2',dag1)
      
   
     (*  
