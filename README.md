@@ -30,7 +30,7 @@ zeta provides interfaces similar to that of the PyTorch, where users can create 
 
 The implementation of zeta's core module, Tensor, is inherently imperative. This is to help create a more efficient representation of a computation graph, and therefore a neural network.
 
-**5. ADTs/GADTs (Algebraic Datatypes / Generalized Algebraic Datatypes)**
+**5. ADTs/GADTs (Algebraic Data Types / Generalized Algebraic Data Types)**
 
 One of the main contributions of zeta is to abstract neural network and tensor operations into numerous ADTs/GADTs, and in the process summarizing some of the basic behaviors deep learning algorithms exhibit. For example, a tensor can be recursively defined as a GADT:
 
