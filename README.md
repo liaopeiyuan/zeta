@@ -11,7 +11,8 @@ But, with all seriousness, I personally think that the combination between funct
 1. Pedagogical
 The source code of zeta is designed to be easy-to-read and succinct so that the user can get more beyond merely using this library for their daily research. I will later add more documentations and possibly tutorials for this library.
 
-2. Functional
+**2. Functional**
+
 One of the most annoying error messages I've encountered in PyTorch looks something like this:
 
 ```
@@ -20,13 +21,16 @@ RuntimeError: expected Double tensor (got Float tensor)
 
 zeta aims to "moves" errors like this from runtime to compile-time by adopting a functional programming paradigm in OCaml.
 
-3. Dynamic Computation Graphs
+**3. Dynamic Computation Graphs**
+
 zeta provides interfaces similar to that of the PyTorch, where users can create a computational graph on-the-fly.
 
-4. Imperative
+**4. Imperative**
+
 The implementation of zeta's core module, Tensor, is inherently imperative. This is to help create a more efficient representation of a computation graph, and therefore a neural network.
 
-5. ADTs/GADTs (Algebraic Datatypes / Generalized Algebraic Datatypes)
+**5. ADTs/GADTs (Algebraic Datatypes / Generalized Algebraic Datatypes)**
+
 One of the main contributions of zeta is to abstract neural network and tensor operations into numerous ADTs/GADTs, and in the process summarizing some of the basic behaviors deep learning algorithms exhibit. For example, a tensor can be recursively defined as a GADT:
 
 ```
@@ -66,20 +70,24 @@ Error: This expression has type bool tensordata
 - Neural Network (G)ADT abstractions
 - Optimizer (G)ADT abstractions
 - Data loader and training abstractions
+- Pseudo-parallel implementation of Sequence
+- (Actually) parallel implementation of Sequence (possibly via Async)
 
 ## Looking for contributors
 
 zeta is still a work in progress! I'm actively looking for collaborators/contributors, and currently my plans include
 
 - Maintaining a documentation and a tutorial page to explain source code of zeta and to encourage educational use of the library
-- CI-integration and unit tests
+- CI and unit tests
 - Items in the to-do list
 
-Or, if you are simply interested in functional programming/machine learning/DSL/type theory or whatever, you can always send me an email via peiyuanl [at] andrew [dot] cmu [dot] edu :) Make sure to include "zeta" in the title!
+Or, if you are simply interested in functional programming/machine learning/DSL/type theory or whatever, you can always send me an email via (peiyuanl [at] andrew [dot] cmu [dot] edu) :) Make sure to include "zeta" in the title!
 
 ## References/Inspirations
 
-Also, this project is inspired/helped by the following works:
+This project is inspired/helped by the following works:
+
+https://arxiv.org/abs/1912.01703
 
 http://www.cs.cmu.edu/afs/cs/academic/class/15210-f14/www/docs/sig/SEQUENCE.html
 
