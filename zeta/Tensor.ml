@@ -311,7 +311,6 @@ module Tensor =
     | IntScalar r -> _new_int lead (IntScalar (f r copy)) copy
     | FloatScalar r -> _new_float lead (FloatScalar (f r copy)) copy
     | BoolScalar r -> _new_bool lead (BoolScalar (f r copy)) copy
-    | _ -> raise TensorInvariantViolated
 
   let broadcast t destination copy = let (source, data, dag) = !t in
     let (lead_dim, trail_dim) = _check_broadcastable source destination in
@@ -334,8 +333,7 @@ module Tensor =
     | (FloatTensor t, FloatTensor t') -> FloatTensor (Array.mapi (fun i e -> _elem_mul (Array.get t i) e) t')
     | (IntTensor t, IntTensor t') -> IntTensor (Array.mapi (fun i e -> _elem_mul (Array.get t i) e) t')
     | (BoolTensor t, BoolTensor t') -> BoolTensor (Array.mapi (fun i e -> _elem_mul (Array.get t i) e) t')
-    | (_, _) -> raise (TypeMismatch "you can only multiply tensors of the same kind")
-  
+
     
   let (#*) (t1 : 'a tensor) (t2 : 'a tensor) : 'a tensor = 
     let ((s1, d1, dag1),(s2, d2, dag2)) = (!t1, !t2) in
@@ -357,15 +355,4 @@ module Tensor =
           let 
           ((_,t1',dag1),(_,t2',_)) = (!(broadcast t1 news true),!(broadcast t2 news true)) in
           ref (news,_elem_mul t1' t2',dag1)
-     
-  
-    (*  
-    | (IntScalar r, []) -> IntScalar (f r copy)
- | (FloatScalar r, []) -> FloatScalar (f r copy)
-     | (BoolScalar r, []) -> BoolScalar (f r copy)
-  
-  let broadcast t s copy = let (source, data, grad, grad_fn) = !t in
-    let (lead_dim, trail_dim) = _check_broadcastable ) in
-    _broadcast t source lead trail copy
-  *)
   end 
