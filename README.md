@@ -4,7 +4,7 @@ functional neural networks in ocaml
 ## Why?
 functions are values :)
 
-But, with all seriousness, I personally think that the combination between functional programming and deep learning can create interesting results as I've realized several dualities between the two.
+But, with all seriousness, I personally think that the combination between functional programming and deep learning can create interesting results as I've myself noticed several dualities between the two when I'm learning the materials.
 
 ## Features of zeta
 
@@ -66,6 +66,16 @@ Error: This expression has type bool tensordata
 - Neural Network (G)ADT abstractions
 - Optimizer (G)ADT abstractions
 - Data loader and training abstractions
+
+## Looking for contributors
+
+zeta is still a work in progress! I'm actively looking for collaborators/contributors, and currently my plans include
+
+- Maintaining a documentation and a tutorial page to explain source code of zeta and to encourage educational use of the library
+- CI-integration and unit tests
+- Items in the to-do list
+
+Or, if you are simply interested in functional programming/machine learning/DSL/type theory or whatever, you can always send me an email via peiyuanl [at] andrew [dot] cmu [dot] edu :) Make sure to include "zeta" in the title!
 
 ## References/Inspirations
 
