@@ -8,8 +8,9 @@ But, with all seriousness, I personally think that the combination between funct
 
 ## Features of zeta
 
-1. Pedagogical
-The source code of zeta is designed to be easy-to-read and succinct so that the user can get more beyond merely using this library for their daily research. I will later add more documentations and possibly tutorials for this library.
+**1. Pedagogical**
+
+zeta does not particularly aim for performance, though I will make sure that reasonable demos are runnable. The source code of zeta is designed to be easy-to-read and succinct so that the user can get more beyond merely using this library for their daily research by reading them. I will later add more documentations and possibly tutorials for this library.
 
 **2. Functional**
 
