@@ -4,7 +4,7 @@ functional neural networks in ocaml
 ## Why?
 functions are values :)
 
-But, with all seriousness, I personally think that the combination between functional programming and deep learning can create interesting results as I've myself noticed several dualities between the two when I'm learning the materials.
+But, in all seriousness, I personally think that the combination between functional programming and deep learning can create interesting results as I've myself noticed several dualities between the two when I'm learning the materials.
 
 ## Features of zeta
 
