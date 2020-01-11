@@ -20,6 +20,8 @@ module Tensor =
       | BoolTensor : bool tensordata array  -> bool tensordata
       
   type shape = int array
+  type index_selection = Range of (int * int) | Index of int | All
+  and slice = index_selection array
   type index = int array
 
   (* Next Layer *)
@@ -41,6 +43,7 @@ module Tensor =
   and 'a tensor = (shape * 'a tensordata * 'a directed_acyclic_graph ) ref  
   
   exception TypeMismatch of string
+  (* This is to satisfy Caml's type system; in theory it should never be raised any time in code *)
   exception TensorInvariantViolated
   exception ShapeMismatch of string
   exception IndexError of string
@@ -95,6 +98,65 @@ module Tensor =
     
   let copy t = let (shape, data, dag) = !t in
     ref (shape, _copy data true, dag)
+
+  (* TODO : DAG connection *)
+  let slice (s : slice) (t : 'a tensor) : 'a tensor = 
+    let (shape, data, dag) = !t in
+    let shape_l = Array.to_list shape in
+    let l = Array.to_list s in
+
+    let rec slice' : 'a. index_selection list -> int list -> 'a tensordata -> 'a tensordata =
+      fun (type el) (s : index_selection list) (l : int list) (d : el tensordata) : el tensordata ->
+        match (s, l, d) with
+        | ([],[], _) -> d
+        | (All::xs, _::ys, IntTensor a) -> IntTensor (Array.map (fun i -> slice' xs ys i) a)
+        | (All::xs, _::ys, BoolTensor a) -> BoolTensor (Array.map (fun i -> slice' xs ys i) a)
+        | (All::xs, _::ys, FloatTensor a) -> FloatTensor (Array.map (fun i -> slice' xs ys i) a)
+        | ((Index i)::xs, y::ys, IntTensor a) -> 
+          if (i < 0) || (i >= y) then 
+            let r = (("Expected index between 0 and " ^ (string_of_int (y-1)))^" ; got ")^(string_of_int i) 
+            in raise (IndexError r)
+          else slice' xs ys (Array.get a i)
+        | ((Index i)::xs, y::ys, FloatTensor a) -> 
+          if (i < 0) || (i >= y) then 
+            let r = (("Expected index between 0 and " ^ (string_of_int (y-1)))^" ; got ")^(string_of_int i) 
+            in raise (IndexError r)
+          else slice' xs ys (Array.get a i)
+        | ((Index i)::xs, y::ys, BoolTensor a) -> 
+          if (i < 0) || (i >= y) then 
+            let r = (("Expected index between 0 and " ^ (string_of_int (y-1)))^" ; got ")^(string_of_int i) 
+            in raise (IndexError r)
+          else slice' xs ys (Array.get a i)
+
+        | ((Range (i1, i2))::xs, y::ys, IntTensor a) -> 
+          if (i1 >= i2) then raise (IndexError "invalid range") else
+          if (i1 < 0) || (i2 < 0) || (i1 >= y)  || (i2 >= y) then 
+            let r = (("Expected index range between 0 and " ^ (string_of_int (y-1)))^" ; got ")^(((string_of_int i1)^"; ")^(string_of_int i2))
+            in raise (IndexError r)
+          else IntTensor (Array.map (fun i -> slice' xs ys i) (Array.sub a i1 (i2-i1)))
+        | ((Range (i1, i2))::xs, y::ys, FloatTensor a) -> 
+          if (i1 >= i2) then raise (IndexError "invalid range") else
+          if (i1 < 0) || (i2 < 0) || (i1 >= y)  || (i2 >= y) then 
+            let r = (("Expected index range between 0 and " ^ (string_of_int (y-1)))^" ; got ")^(((string_of_int i1)^"; ")^(string_of_int i2))
+            in raise (IndexError r)
+          else FloatTensor (Array.map (fun i -> slice' xs ys i) (Array.sub a i1 (i2-i1)))
+        | ((Range (i1, i2))::xs, y::ys, BoolTensor a) -> 
+          if (i1 >= i2) then raise (IndexError "invalid range") else
+          if (i1 < 0) || (i2 < 0) || (i1 >= y)  || (i2 >= y) then 
+            let r = (("Expected index range between 0 and " ^ (string_of_int (y-1)))^" ; got ")^(((string_of_int i1)^"; ")^(string_of_int i2))
+            in raise (IndexError r)
+          else BoolTensor (Array.map (fun i -> slice' xs ys i) (Array.sub a i1 (i2-i1)))  
+        | _ -> raise (ShapeMismatch "slice must have the same dimension as the shape") in
+
+    let rec new_shape l s r = match (l,s) with
+      | ([], []) -> r
+      | (x::xs, y::ys) -> (match x with
+          | All -> new_shape xs ys (y::r)
+          | Index _ -> new_shape xs ys r
+          | Range (a,b) -> new_shape xs ys ((b-a)::r))
+      | _ -> raise TensorInvariantViolated in
+
+    ref ( (new_shape l shape_l []) |> List.rev |> Array.of_list , _copy (slice' l shape_l data) true, Null)
 
   let rec _new_bool (s : int list) v b = match s with
     | [] -> _copy v b
