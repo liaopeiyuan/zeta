@@ -1,5 +1,8 @@
-# zeta
+# zeta (work in progress)
+
 functional neural networks in ocaml
+
+zeta is not (yet) usable. I made the repository public with the intention of inviting the community to contribute to this project. Please see below for motivations and the to-do list. Discussions are welcome, but pelease bear in mind that this is an early-stage work.
 
 ## Why?
 functions are values :)
@@ -63,7 +66,7 @@ Error: This expression has type bool tensordata
 
 ## To-Do List
 
-- Tensor viewing, slicing, reshaping, concatenating
+- Tensor viewing, ~~slicing~~, reshaping, concatenating
 - Tensor dot product and tensor product
 - Matrix multiplication
 - Convolutions (1d, 2d, 3d)
