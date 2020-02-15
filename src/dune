@@ -1,0 +1,10 @@
+(library
+ (name zeta))
+
+;; The library will be composed of all the modules in the same directory.
+;; Outside of the library, module Tensor will be accessible as Zeta.Tensor,
+;; unless you write an explicit zeta.ml file.
+
+;; This library can be made available as an opam package if you replace
+;; (name zeta) by (public_name zeta) and write a zeta.opam file.
+
