@@ -4,6 +4,15 @@ functional neural networks in ocaml
 
 zeta is not (yet) usable. I made the repository public with the intention of inviting the community to contribute to this project. Please see below for motivations and the to-do list. Discussions are welcome, but pelease bear in mind that this is an early-stage work.
 
+## Using zeta
+**Requirements**: `ocaml` and `dune` for building
+Zeta is still in early development stage. The API is undocumented and is subject to change.
+```
+git clone https://github.com/liaopeiyuan/zeta
+cd zeta/src && dune build zeta.a
+```
+The static library, `zeta.a`, will be located under `_build/default`.
+
 ## Why?
 functions are values :)
 
